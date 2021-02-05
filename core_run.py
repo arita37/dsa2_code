@@ -140,6 +140,7 @@ def train(config='', nsample=None):
     run_train.run_train(config_name       =  config_name,
                         config_path       =  m['config_path'],
                         n_sample          =  nsample if nsample is not None else m['n_sample'],
+                        # use_mlmflow       =  False
                         )
 
 
@@ -180,6 +181,58 @@ def predict(config='', nsample=None):
                               path_output = m['path_pred_output'],
                               model_dict  = None
                               )
+
+
+########################################################################################
+####### Inference ######################################################################
+def hyperparam_wrapper(config_full="",
+                       ntrials=2, n_sample=5000, debug=1,
+                       path_output         = "data/output/titanic1/",
+                       path_optuna_storage = 'data/output/optuna_hyper/optunadb.db',
+                       metric_name='accuracy_score', mdict_range=None):
+
+    from source.util_feature import load_function_uri
+    from source.run_train import  run_train
+    from source.run_hyperopt import run_hyper_optuna
+    import json
+
+    ##############################################################################
+    ####### model_dict initial dict of params  ###################################
+    config_name = config_full.split("::")[-1]
+    mdict       = load_function_uri(config_full) #titanic1()
+    mdict       = mdict()
+
+    ####### Objective   ##########################################################
+    def objective_fun(mdict):
+        if debug : log(mdict)#
+        ddict       = run_train(config_name="", config_path="", n_sample= n_sample,
+                                mode="run_preprocess", model_dict=mdict,
+                                return_mode='dict')
+
+        # print(ddict['stats']['metrics_test'].to_dict('records')[0])
+        ddict['stats'][metric_name] = ddict['stats']['metrics_test'].to_dict('records')[0]['metric_val']
+
+        if debug : print(ddict)
+        res = ddict['stats'][metric_name]
+        return res
+
+    ##### Optuna Params   ####################################################
+    engine_pars = {'metric_target' :'loss',
+                   'study_name'    : config_name  ,
+                   'storage'       : f"sqlite:///" + os.path.abspath(path_optuna_storage).replace("\\", "/") }
+
+    ##### Running the optim
+    best_dict   = run_hyper_optuna(objective_fun, mdict, mdict_range, engine_pars, ntrials= ntrials)
+
+
+    ##### Export
+    os.makedirs(path_output, exist_ok=True)
+    json.dump(best_dict, open(path_output + "/hyper_params_best.json", mode='a'))
+
+    log(engine_pars['storage'])
+    log(best_dict)
+    log(path_output)
+
 
 
 ##########################################################################################

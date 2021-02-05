@@ -8,13 +8,10 @@ import copy
 import os
 from collections import OrderedDict
 
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import re
-
-# from tsfresh import extract_relevant_features, extract_features
-# from tsfresh.utilities.dataframe_functions import roll_time_series
 
 
 #############################################################################################
@@ -44,6 +41,34 @@ def os_getcwd():
 
 
 #############################################################################################
+def save_features(df, name, path=None):
+    """ Save dataframe on disk
+    :param df:
+    :param name:
+    :param path:
+    :return:
+    """
+    if path is not None :
+       os.makedirs( f"{path}/{name}" , exist_ok=True)
+       if isinstance(df, pd.Series):
+           df0=df.to_frame()
+       else:
+           df0=df
+       log( f"{path}/{name}/features.parquet" )
+       log(df0, list(df0.columns))
+       df0.to_parquet( f"{path}/{name}/features.parquet")
+    else:
+       log("No saved features, path is none")
+
+
+def load_features(name, path):
+    try:
+        return pd.read_parquet(f"{path}/{name}/features.parquet")
+    except:
+        log("Not available", path, name)
+        return None
+
+
 def save_list(path, name_list, glob):
     import pickle, os
     os.makedirs(path, exist_ok=True)
@@ -63,45 +88,132 @@ def load(file_name):
     return pickle.load(open(f'{file_name}', mode='rb'))
 
 
+def pd_read_file(path_glob="*.pkl", ignore_index=True,  cols=None,
+                 verbose=False, nrows=-1, concat_sort=True, n_pool=1, drop_duplicates=None, col_filter=None,  col_filter_val=None,  **kw):
+  """
+      Read file in parallel from disk : very Fast
+  :param path_glob:
+  :param ignore_index:
+  :param cols:
+  :param verbose:
+  :param nrows:
+  :param concat_sort:
+  :param n_pool:
+  :param drop_duplicates:
+  :param shop_id:
+  :param kw:
+  :return:
+  """
+  import glob, gc,  pandas as pd, os
+  readers = {
+          ".pkl"     : pd.read_pickle,
+          ".parquet" : pd.read_parquet,
+          ".csv"     : pd.read_csv,
+          ".txt"     : pd.read_csv,
+          ".zip"     : pd.read_csv,
+          ".gzip"    : pd.read_csv,
+   }
+  from multiprocessing.pool import ThreadPool
+  pool = ThreadPool(processes=n_pool)
+
+  file_list = glob.glob(path_glob)
+  # print("ok", verbose)
+  dfall = pd.DataFrame()
+  n_file = len(file_list)
+  if verbose : log(n_file,  n_file // n_pool )
+  for j in range(n_file // n_pool +1 ) :
+      log("Pool", j, end=",")
+      job_list =[]
+      for i in range(n_pool):
+         if n_pool*j + i >= n_file  : break
+         filei         = file_list[n_pool*j + i]
+         ext           = os.path.splitext(filei)[1]
+         pd_reader_obj = readers[ext]
+         job_list.append( pool.apply_async(pd_reader_obj, (filei, )))
+         if verbose :
+            log(j, filei)
+
+      for i in range(n_pool):
+        if i >= len(job_list): break
+        dfi   = job_list[ i].get()
+
+        if col_filter is not None : dfi = dfi[ dfi[col_filter] == col_filter_val ]
+        if cols is not None :       dfi = dfi[cols]
+        if nrows > 0        :       dfi = dfi.iloc[:nrows,:]
+        if drop_duplicates is not None  : dfi = dfi.drop_duplicates(drop_duplicates)
+        gc.collect()
+
+        dfall = pd.concat( (dfall, dfi), ignore_index=ignore_index, sort= concat_sort)
+        #log("Len", n_pool*j + i, len(dfall))
+        del dfi; gc.collect()
+
+  if verbose : log(n_file, j * n_file//n_pool )
+  return dfall
+
+
+
 
 def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
+    """
+      return a datraframe
+      https://raw.github.com/someguy/brilliant/master/somefile.txt
+
+    :param path_data_x:
+    :param path_data_y:
+    :param colid:
+    :param n_sample:
+    :return:
+    """
     log('loading', colid, path_data_x)
-    import glob
-    import ntpath
+    import glob, ntpath
+
+    supported_extensions = [ ".txt", ".csv", ".zip", ".gzip", ".pkl", ".parquet" ]
+    # fallback_name        = "features"
+
+    if (path_data_x.startswith("http")):
+        download_path        = os.path.join(os.path.curdir, "data/input/download")
+        path_data_x = fetch_dataset(path_data_x, download_path)
+
+    #### grab files in the folder
     flist = glob.glob( ntpath.dirname(path_data_x)+"/*" )#ntpath.dirname(path_data_x)+"/*"
-    flist = [ f for f in flist if os.path.splitext(f)[1][1:].strip().lower() in [ 'zip', 'parquet'] and ntpath.basename(f)[:8] in ['features'] ]
+    flist = [ f for f in flist if os.path.splitext(f)[1].strip().lower() in supported_extensions and ntpath.basename(f)[:8] in ['features'] ]
     assert len(flist) > 0 , " No file: " +path_data_x
 
-    log("###### Load dfX target values #####################################")
+
+    log("###### Load dfX target values ######################################")
     print(flist)
-    df    = None
+    #df    = None
+    fstr = ",".join(flist)
     for fi in flist :
-        if ".parquet" in fi :  dfi = pd.read_parquet(fi) # + "/features.zip")
-        if ".zip" in fi  :     dfi = pd.read_csv(fi) # + "/features.zip")
-        df = pd.concat((df, dfi))  if df is not None else dfi
+        try:
+            df = pd_read_file(fi)
+            if len(df) > 0:
+                break
+        except:
+            pass
+
+    #    df = pd.concat((df, dfi))  if df is not None else dfi
     assert len(df) > 0 , " Dataframe is empty: " + path_data_x
-    log("dfX_raw", df.T.head(4))
+    log("dfX", df.T.head(4))
 
-
-    # df = pd.read_csv(path_data_x) # + "/features.zip")
+    #### Add unique column_id  ###############################################
     if colid not in list(df.columns ):
       df[colid] = np.arange(0, len(df))
     df        = df.set_index(colid)
-
 
     if n_sample > 0:
         df = df.iloc[:n_sample, :]
 
     log("###### Load dfy target values ###################################")
     try:
+        if (path_data_y.startswith("http")):
+           path_data_y = fetch_dataset(path_data_y, download_path)
+
         flist = glob.glob( ntpath.dirname(path_data_y)+"/*" )
         flist = [ f for f in flist if os.path.splitext(f)[1][1:].strip().lower() in [ 'zip', 'parquet'] and ntpath.basename(f)[:6] in ['target']]
-        dfy   = pd.DataFrame()
-        dfi   = None
-        for fi in flist :
-            if ".parquet" in fi :  dfi = pd.read_parquet(fi) # + "/features.zip")
-            if ".zip" in fi  :     dfi = pd.read_csv(fi) # + "/features.zip")
-            dfy = pd.concat((dfy, dfi))
+        # dfy   = pd.DataFrame()
+        fstr = ",".join(flist)
+        dfy  = pd_read_file(fstr)
 
         log("dfy", dfy.head(4).T)
         if colid not in list(dfy.columns) :
@@ -114,105 +226,111 @@ def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
     return df
 
 
+def fetch_dataset(url_dataset, path_target=None, file_target=None):
+    """Fetch dataset from a given URL and save it.
 
+    Currently `github`, `gdrive` and `dropbox` are the only supported sources of
+    data. Also only zip files are supported.
 
+    :param url_dataset:   URL to send
+    :param path_target:   Path to save dataset
+    :param file_target:   File to save dataset
 
-def pd_read_file(path_glob="*.pkl", ignore_index=True,  cols=None,
-                  verbose=False, nrows=-1, concat_sort=True, n_pool=1,
-                  drop_duplicates=None, shop_id=None, nmax= 1000000000,  **kw):
-  """
-     "*.pkl, *.parquet"
-
-  """
-  # os.environ["MODIN_ENGINE"] = "dask"
-  # import modin.pandas as pd
-  import glob, gc,  pandas as pd, os
-  readers = {
-          ".pkl"     : pd.read_pickle,
-          ".parquet" : pd.read_parquet,
-          ".csv"     : pd.read_csv,
-          ".txt"     : pd.read_csv,
-   }
-  from multiprocessing.pool import ThreadPool
-  pool = ThreadPool(processes=n_pool)
-
-  path_glob_list = [ t.strip() for t in  path_glob.split(",") ]
-  file_list = []
-  for pg in path_glob_list :
-    file_list = file_list + glob.glob(pg)
-  file_list.sort()
-  n_file = len(file_list)
-  if n_file < 1: raise Exception("No file exist", path_glob)
-
-  # print("ok", verbose)
-  dfall = pd.DataFrame()
-
-  if verbose : log(n_file,  n_file // n_pool )
-  for j in range(n_file // n_pool +1 ) :
-      log("Pool", j)
-      job_list =[]
-      for i in range(n_pool):
-         if n_pool*j + i >= n_file  : break
-         filei         = file_list[n_pool*j + i]
-         ext           = os.path.splitext(filei)[1]
-         pd_reader_obj = readers[ext]
-         job_list.append( pool.apply_async(pd_reader_obj, (filei, )))
-         if verbose : log(j, filei)
-
-      for i in range(n_pool):
-        if i >= len(job_list): break
-        dfi   = job_list[i].get()
-
-        if shop_id is not None and "shop_id" in  dfi.columns : dfi = dfi[ dfi['shop_id'] == shop_id ]
-        if cols is not None :    dfi = dfi[cols]
-        if nrows > 0        :    dfi = dfi.iloc[:nrows,:]
-        if drop_duplicates is not None  : dfi = dfi.drop_duplicates(drop_duplicates)
-        gc.collect()
-
-        dfall = pd.concat( (dfall, dfi), ignore_index=ignore_index, sort= concat_sort)
-        #log("Len", n_pool*j + i, len(dfall))
-        del dfi; gc.collect()
-
-        if len(dfall) > nmax : return dfall
-
-  if verbose : log(n_file, j * n_file//n_pool )
-  gc.collect()
-  return dfall
-
-
-def load_function_uri2(uri_name="module_name.function_or_class"):
     """
-    #load dynamically function from URI pattern
-    #"dataset"        : "mlmodels.preprocess.generic:pandasDataset"
-    ###### External File processor :
-    #"dataset"        : "MyFolder/preprocess/myfile.py:pandasDataset"
-    """
-    import importlib, sys
-    from pathlib import Path
-    pkg = uri_name.split("::")
+    log("###### Download ##################################################")
+    from tempfile import mktemp, mkdtemp
+    from urllib.parse import urlparse, parse_qs
+    import pathlib
+    fallback_name        = "features"
+    download_path        = path_target
+    supported_extensions = [ ".zip" ]
 
-    assert len(pkg) > 1, "  Missing :   in  uri_name module_name:function_or_class "
-    package, name = pkg[0], pkg[1]
+    if path_target is None:
+        path_target   = mkdtemp(dir=os.path.curdir)
+        download_path = path_target
+    else:
+        pathlib.Path(path_target).mkdir(parents=True, exist_ok=True)
 
-    try:
-        #### Import from package mlmodels sub-folder
-        return  getattr(importlib.import_module(package), name)
+    if file_target is None:
+        file_target = fallback_name # mktemp(dir="")
 
-    except Exception as e1:
-        try:
-            ### Add Folder to Path and Load absoluate path module
-            path_parent = str(Path(package).parent.parent.absolute())
-            sys.path.append(path_parent)
-            log(path_parent)
 
-            #### import Absolute Path model_tf.1_lstm
-            model_name   = Path(package).stem  # remove .py
-            package_name = str(Path(package).parts[-2]) + "." + str(model_name)
-            #log(package_name, config_name)
-            return  getattr(importlib.import_module(package_name), name)
 
-        except Exception as e2:
-            raise NameError(f"Module {pkg} notfound, {e1}, {e2}")
+    if "github.com" in url_dataset:
+        """
+                # https://github.com/arita37/dsa2_data/raw/main/input/titanic/train/features.zip
+ 
+              https://github.com/arita37/dsa2_data/raw/main/input/titanic/train/features.zip            
+              https://raw.githubusercontent.com/arita37/dsa2_data/main/input/titanic/train/features.csv            
+              https://raw.githubusercontent.com/arita37/dsa2_data/tree/main/input/titanic/train/features.zip             
+              https://github.com/arita37/dsa2_data/blob/main/input/titanic/train/features.zip
+                 
+        """
+        # urlx = url_dataset.replace(  "github.com", "raw.githubusercontent.com" )
+        urlx = url_dataset.replace("/blob/", "/raw/")
+        urlx = urlx.replace("/tree/", "/raw/")
+        log(urlx)
+
+        urlpath = urlx.replace("https://github.com/", "github_")
+        urlpath = urlpath.split("/")
+        fname = urlpath[-1]  ## filaneme
+        fpath = "-".join(urlpath[:-1])[:-1]   ### prefix path normalized
+        assert "." in fname, f"No filename in the url {urlx}"
+
+        os.makedirs(download_path + "/" + fpath, exist_ok= True)
+        full_filename = os.path.abspath( download_path + "/" + fpath + "/" + fname )
+        log('#### Download saving in ', full_filename)
+
+        import requests
+        with requests.Session() as s:
+            res = s.get(urlx)
+            if res.ok:
+                print(res.ok)
+                with open(full_filename, "wb") as f:
+                    f.write(res.content)
+            else:
+                raise res.raise_for_status()
+        return full_filename
+
+
+
+    if "drive.google.com" in url_dataset:
+        full_filename = os.path.join(path_target, file_target)
+        from util import download_googledrive
+        urlx    = urlparse(url_dataset)
+        file_id = parse_qs(urlx.query)['id'][0]
+        download_googledrive([{'fileid': file_id, "path_target":
+                               full_filename}])
+
+
+
+
+    if "dropbox.com" in url_dataset:
+        full_filename = os.path.join(path_target, file_target)
+        from util import download_dtopbox
+        dbox_path_target = mkdtemp(dir=path_target)
+        download_dtopbox({'url':      url_dataset,
+                          'out_path': os.path.join(dbox_path_target)})
+        dbox_file_target = os.listdir(dbox_path_target)[0]
+        full_filename = os.path.join(dbox_path_target, dbox_file_target)
+
+
+
+
+    path_data_x = full_filename
+
+    #### Very Hacky : need to be removed.  ######################################
+    for file_extension in supported_extensions:
+        path_link_x = os.path.join(download_path, fallback_name + file_extension)
+        if os.path.exists(path_link_x):
+            os.unlink(path_link_x)
+        os.link(path_data_x, path_link_x)
+
+    #path_data_x = download_path + "/*"
+
+    return path_data_x
+    #return full_filename
+
 
 def load_function_uri(uri_name="myfolder/myfile.py::myFunction"):
     """

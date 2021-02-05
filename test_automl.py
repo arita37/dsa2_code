@@ -2,8 +2,32 @@
 # -*- coding: utf-8 -*-
 """
 
-  python titanic_classifier.py  train    > zlog/log_titanic_train.txt 2>&1
-  python titanic_classifier.py  predict  > zlog/log_titanic_predict.txt 2>&1
+https://github.com/mljar/mljar-supervised
+
+  python  test_automl.py  train    > zlog/log_titanic_train.txt 2>&1
+  python  test_automl.py  predict  > zlog/log_titanic_predict.txt 2>&1
+
+
+conda install -c conda-forge fastparquet
+
+ dtreeviz==1.0, which is not installed.
+ fastparquet==0.4.1, which is not installed.
+ wordcloud==1.7.0, which is not installed.
+
+
+ catboost==0.24.1, but you'll have catboost 0.22 which is incompatible.
+ category-encoders==2.2.2, but you'll have category-encoders 2.1.0 which is incompatible.
+ lightgbm==3.0.0, but you'll have lightgbm 2.3.0 which is incompatible.
+ numpy>=1.18.5, but you'll have numpy 1.18.1 which is incompatible.
+ pandas==1.1.2, but you'll have pandas 0.25.3 which is incompatible.
+ pyarrow==0.17.0, but you'll have pyarrow 2.0.0 which is incompatible.
+ scipy==1.4.1, but you'll have scipy 1.3.1 which is incompatible.
+ seaborn==0.10.1, but you'll have seaborn 0.10.0 which is incompatible.
+ shap==0.36.0, but you'll have shap 0.35.0 which is incompatible.
+ tabulate==0.8.7, but you'll have tabulate 0.8.6 which is incompatible.
+ xgboost==1.2.0, but you'll have xgboost 1.3.3 which is incompatible.
+
+
 
 
 """
@@ -63,10 +87,10 @@ def global_pars_update(model_dict,  data_name, config_name):
 
 ####################################################################################
 ##### Params########################################################################
-config_default   = 'titanic_lightgbm'    ### name of function which contains data configuration
+config_default   = 'config1'    ### name of function which contains data configuration
 
 
-# data_name    = "titanic"     ### in data/input/
+########
 cols_input_type_1 = {
      "coly"   :   "Survived"
     ,"colid"  :   "PassengerId"
@@ -79,13 +103,13 @@ cols_input_type_1 = {
 
 
 ####################################################################################
-def titanic_lightgbm() :
+def config1() :
     """
        ONE SINGLE DICT Contains all needed informations for
        used for titanic classification task
     """
     data_name    = "titanic"         ### in data/input/
-    model_class  = 'LGBMClassifier'  ### ACTUAL Class name for model_sklearn.py
+    model_class  = 'AutoML'  ### ACTUAL Class name for model_sklearn.py
     n_sample     = 1000
 
     def post_process_fun(y):   ### After prediction is done
@@ -98,11 +122,17 @@ def titanic_lightgbm() :
     model_dict = {'model_pars': {
         ### LightGBM API model   #######################################
          'model_class': model_class
-        ,'model_pars' : {'objective': 'binary',
-                           'n_estimators': 10,
-                           'learning_rate':0.001,
-                           'boosting_type':'gbdt',     ### Model hyperparameters
-                           'early_stopping_rounds': 5
+        ,'model_pars' : {
+            'total_time_limit' : 20,
+            'algorithms' : 'auto',
+            'results_path' :   root_repo  + f'/data/output/{data_name}/{os_get_function_name()}/automl_1',
+            'eval_metric' : 'auto'
+
+            # mode='Explain',
+            # ml_task='auto', model_time_limit=None, algorithms='auto', train_ensemble=True,
+            # stack_models='auto', eval_metric='auto', validation_strategy='auto', explain_level='auto',
+            # golden_features='auto', features_selection='auto', start_random_models='auto',
+            # hill_climbing_steps='auto', top_models_to_improve='auto', verbose=1, random_state=1234)
                         }
 
         , 'post_process_fun' : post_process_fun   ### After prediction  ##########################################
@@ -120,15 +150,15 @@ def titanic_lightgbm() :
 
         #### catcol INTO integer,   colcat into OneHot
         {'uri': 'source/prepro.py::pd_colcat_bin',           'pars': {}, 'cols_family': 'colcat',     'cols_out': 'colcat_bin',     'type': ''             },
-        {'uri': 'source/prepro.py::pd_colcat_to_onehot',     'pars': {}, 'cols_family': 'colcat_bin', 'cols_out': 'colcat_onehot',  'type': ''             },
+        # {'uri': 'source/prepro.py::pd_colcat_to_onehot',     'pars': {}, 'cols_family': 'colcat_bin', 'cols_out': 'colcat_onehot',  'type': ''             },
 
 
         ### Cross_feat = feat1 X feat2
-        {'uri': 'source/prepro.py::pd_colcross',             'pars': {}, 'cols_family': 'colcross',   'cols_out': 'colcross_pair',  'type': 'cross'},
+        # {'uri': 'source/prepro.py::pd_colcross',             'pars': {}, 'cols_family': 'colcross',   'cols_out': 'colcross_pair',  'type': 'cross'},
 
 
         #### Example of Custom processor
-        {'uri':  THIS_FILEPATH + '::pd_col_myfun',   'pars': {}, 'cols_family': 'colnum',   'cols_out': 'col_myfun',  'type': '' },                
+        #{'uri':  THIS_FILEPATH + '::pd_col_myfun',   'pars': {}, 'cols_family': 'colnum',   'cols_out': 'col_myfun',  'type': '' },                
 
 
         ],
@@ -137,7 +167,7 @@ def titanic_lightgbm() :
 
       'compute_pars': { 'metric_list': ['accuracy_score','average_precision_score']
 
-                        ,'mlflow_pars' : {}   ### Not empty --> use mlflow
+                        ,'mlflow_pars' : None # {}   ### Not empty --> use mlflow
                       },
 
       'data_pars': { 'n_sample' : n_sample,
@@ -154,10 +184,10 @@ def titanic_lightgbm() :
                                 'colcat_bin',
                                 # 'coltext',
                                 # 'coldate',
-                                'colcross_pair',
+                                #'colcross_pair',
                                
                                ### example of custom
-                               'col_myfun'
+                               # 'col_myfun'
                               ]
 
           ### Filter data rows   ##################################################################
@@ -302,11 +332,11 @@ def predict(config=None, nsample=None):
 ###########################################################################################################
 ###########################################################################################################
 """
-python  titanic_classifier.py  data_profile
-python  titanic_classifier.py  preprocess  --nsample 100
-python  titanic_classifier.py  train       --nsample 200
-python  titanic_classifier.py  check
-python  titanic_classifier.py  predict
+python   test_automl.py  data_profile
+python   test_automl.py  preprocess  --nsample 100
+python   test_automl.py  train       --nsample 200
+python   test_automl.py  check
+python   test_automl.py  predict
 
 
 """

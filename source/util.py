@@ -1,16 +1,23 @@
 # pylint: disable=C0321,C0103,E1221,C0301,E1305,E1121,C0302,C0330
 # -*- coding: utf-8 -*-
 """
-Methods for feature extraction and preprocessing
+
 util_feature: input/output is pandas
 """
 import copy
 import os
 from collections import OrderedDict
+import numpy as np, pandas as pd
+from tempfile import gettempdir
+import requests
+import cgi
+import os
+import re
+import uuid
 
 
 #############################################################################################
-print("os.getcwd", os.getcwd())
+# print("os.getcwd", os.getcwd())
 
 def log(*s, n=0, m=1, **kw):
     sspace = "#" * n
@@ -24,13 +31,209 @@ class dict2(object):
         self.__dict__ = d
 
 
-
-import numpy as np, pandas as pd
-from tempfile import gettempdir
-
-
-
 ############################################################################################################
+def download_googledrive(file_list=[ {  "fileid": "1-K72L8aQPsl2qt_uBF-kzbai3TYG6Qg4",  "path_target":  "data/input/download/test.json"}], **kw):
+    """
+      Use in dataloader with
+         "uri": mlmodels.data:donwload_googledrive
+         file_list = [ {  "fileid": "1-K72L8aQPsl2qt_uBF-kzbai3TYG6Qg4",  "path_target":  "ztest/covid19/test.json"},
+                        {  "fileid" :  "GOOGLE URL ID"   , "path_target":  "dataset/test.json"},
+                 ]
+    """
+    try :
+      import gdown
+    except:
+        os.system('pip install gdown')
+        import gdown
+    import random
+    target_list = []
+
+    for d in file_list :
+      fileid = d["fileid"]
+      target = d.get("path_target", "data/input/adonwload/googlefile_" + str(random.randrange(1000) )  )
+
+      os.makedirs(os.path.dirname(target), exist_ok=True)
+
+      url = f'https://drive.google.com/uc?id={fileid}'
+      gdown.download(url, target, quiet=False)
+      target_list.append( target  )
+
+    return target_list
+
+
+def download_dtopbox(data_pars):
+  """
+  download_data({"from_path" :  "tabular",
+                        "out_path" :  path_norm("ztest/dataset/text/") } )
+  Open URL
+     https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAoFh0aO9RqwwROksGgasIha?dl=0
+
+
+  """
+  # from cli_code.cli_download import Downloader
+
+  folder = data_pars.get('from_path', None)  # dataset/text/
+
+  urlmap = {
+     "text" :    "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AADHrhC7rLkd42_CEqK6A9oYa/dataset/text?dl=1&subfolder_nav_tracking=1"
+     ,"tabular" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAxZkJTGSumLADzj3B5wbA0a/dataset/tabular?dl=1&subfolder_nav_tracking=1"
+     ,"pretrained" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AACL3LHW1USWrvsV5hipw27ia/model_pretrained?dl=1&subfolder_nav_tracking=1"
+
+     ,"vision" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAM4k7rQrkjBo09YudYV-6Ca/dataset/vision?dl=1&subfolder_nav_tracking=1"
+     ,"recommender": "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AABIb2JjQ6aQHwfq5CU0ypHOa/dataset/recommender?dl=1&subfolder_nav_tracking=1"
+
+  }
+
+  if data_pars.get('url', None):
+      url = data_pars['url']
+  elif folder:
+      url = urlmap[folder]
+
+  #prefix = "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/"
+  #url= f"{prefix}/AADHrhC7rLkd42_CEqK6A9oYa/{folder}?dl=1&subfolder_nav_tracking=1"
+
+  out_path = data_pars['out_path']
+
+  if folder:
+      zipname = folder.split("/")[0]
+
+
+  os.makedirs(out_path, exist_ok=True)
+  downloader = Downloader(url)
+  downloader.download(out_path)
+
+  if folder:
+      import zipfile
+      with zipfile.ZipFile( out_path + "/" + zipname + ".zip" ,"r") as zip_ref:
+          zip_ref.extractall(out_path)
+
+
+
+class Downloader:
+
+    GITHUB_NETLOC = 'github.com'
+    GITHUB_RAW_NETLOC = 'raw.githubusercontent.com'
+
+    GDRIVE_NETLOC = 'drive.google.com'
+    GDRIVE_LINK_TEMPLATE = 'https://drive.google.com/u/0/uc?id={fileid}&export=download'
+
+    DROPBOX_NETLOC = 'dropbox.com'
+
+    DEFAULT_FILENAME = uuid.uuid4().hex  # To provide unique filename in batch jobs
+
+    def __init__(self, url):
+        """Make path adjustments and parse url"""
+        self.url = url
+        self.parsed = requests.utils.urlparse(url)
+
+        self.clean_netloc()
+
+        if not self.parsed.netloc:
+            raise ValueError('Wrong URL (Make sure "http(s)://" included)')
+
+        self.adjust_url()
+
+    def clean_netloc(self):
+        clean_netloc = re.sub(r'^www\.', '', self.parsed.netloc)
+        self.parsed = self.parsed._replace(netloc=clean_netloc)
+
+    def adjust_url(self):
+        if self.parsed.netloc == self.GITHUB_NETLOC:
+            self._transform_github_url()
+        elif self.parsed.netloc == self.GDRIVE_NETLOC:
+            self._transform_gdrive_url()
+        elif self.parsed.netloc == self.DROPBOX_NETLOC:
+            self._transform_dropbox_url()
+
+    def _transform_github_url(self):
+        """Github specific changes to get link to raw file"""
+        self.url = (
+            self.url
+            .replace('/blob/', '/')
+            .replace(self.GITHUB_NETLOC, self.GITHUB_RAW_NETLOC)
+        )
+
+    def _transform_gdrive_url(self):
+        """GDrive specific changes to get link to raw file"""
+        fileid = self.parsed.path.replace('/file/d/', '').split('/')[0]
+        self.url = self.GDRIVE_LINK_TEMPLATE.format(fileid=fileid)
+
+    def _transform_dropbox_url(self):
+        """DropBox specific changes to get link to raw file"""
+        self.url = requests.utils.urlunparse(
+            self.parsed._replace(query='dl=1'))
+
+    def get_filename(self, headers):
+        """Attempt to get filename from content-dispositions header.
+
+        If not found: get filename from parsed path
+        If both fail: use DEFAULT_FILENAME to save file
+        """
+        header = headers.get('content-disposition')
+
+        if header is not None:
+            _, params = cgi.parse_header(header)
+            filename = params.get('filename')
+        else:
+            try:
+                filename = self.parsed.path.split('/')[-1]
+            except IndexError:
+                filename = None
+
+        return filename if filename is not None else self.DEFAULT_FILENAME
+
+    def download(self, filepath=''):
+        '''Downloading and saving file'''
+
+        if not os.path.exists(filepath):
+            os.mkdir(filepath)
+
+        response = requests.get(self.url)
+        filename = self.get_filename(response.headers)
+
+        full_filename = os.path.join(filepath, filename)
+
+        if response.status_code == 200:
+            with open(full_filename, "wb") as f:
+                f.write(response.content)
+
+            print(f'File saved as {full_filename}')
+        else:
+            print('Bad request')
+
+
+
+
+
+
+####################################################################################
+def load_dataset_generator(data_pars):
+  def sent_generator(TRAIN_DATA_FILE, chunksize):
+      import pandas as pd
+      reader = pd.read_csv(TRAIN_DATA_FILE, chunksize=chunksize, iterator=True)
+      for df in reader:
+          val3  = df.iloc[:, 3:4].values.tolist()
+          val4  = df.iloc[:, 4:5].values.tolist()
+          flat3 = [item for sublist in val3 for item in sublist]
+          flat4 = [str(item) for sublist in val4 for item in sublist]
+          texts = []
+          texts.extend(flat3[:])
+          texts.extend(flat4[:])
+
+          sequences  = model.tokenizer.texts_to_sequences(texts)
+          data_train = pad_sequences(sequences, maxlen=data_pars["MAX_SEQUENCE_LENGTH"])
+          yield [data_train, data_train]
+
+  return sent_generator(data_pars["train_data_path"])
+
+  # model.model.fit(sent_generator(data_pars["train_data_path"], batch_size / 2),
+  #                epochs          = epochs,
+  #                steps_per_epoch = n_steps,
+  #                validation_data = (data_pars["data_1_val"], data_pars["data_1_val"]))
+
+
+
+
 def tf_dataset(dataset_pars):
     """
         dataset_pars ={ "dataset_id" : "mnist", "batch_size" : 5000, "n_train": 500, "n_test": 500,
@@ -79,24 +282,25 @@ def tf_dataset(dataset_pars):
 })
 
     """
-    import tensorflow_datasets as tfds
+    try :
+        import tensorflow_datasets as tfds
+    except :
+        os.system(('pip install tensorflow_datasets'))
+        import tensorflow_datasets as tfds
 
     d          = dataset_pars
     dataset_id = d['dataset_id']
     batch_size = d.get('batch_size', -1)  # -1 neans all the dataset
     n_train    = d.get("n_train", 500)
     n_test     = d.get("n_test", 500)
-    out_path   = path_norm(d['out_path'] )
+    out_path   = d['out_path']
     name       = dataset_id.replace(".","-")
     os.makedirs(out_path, exist_ok=True)
-
 
     train_ds =  tfds.as_numpy( tfds.load(dataset_id, split= f"train[0:{n_train}]", batch_size=batch_size) )
     test_ds  = tfds.as_numpy( tfds.load(dataset_id, split= f"test[0:{n_test}]", batch_size=batch_size) )
 
     # test_ds  = tfds.as_numpy( tfds.load(dataset_id, split= f"test[0:{n_test}]", batch_size=batch_size) )
-
-
 
     print("train", train_ds.shape )
     print("test",  test_ds.shape )
@@ -119,150 +323,5 @@ def tf_dataset(dataset_pars):
        np.savez_compressed(out_path + f"{name}_test", X = x[xkey] , y = x.get('label') )
 
     print(out_path, os.listdir( out_path ))
-
-
-
-def download_googledrive(file_list=[ {  "fileid": "1-K72L8aQPsl2qt_uBF-kzbai3TYG6Qg4",  "path_target":  "data/input/download/test.json"}], **kw):
-    """
-      Use in dataloader with
-         "uri": mlmodels.data:donwload_googledrive
-         file_list = [ {  "fileid": "1-K72L8aQPsl2qt_uBF-kzbai3TYG6Qg4",  "path_target":  "ztest/covid19/test.json"},
-                        {  "fileid" :  "GOOGLE URL ID"   , "path_target":  "dataset/test.json"},
-                 ]
-    """
-    import gdown
-    import random
-    # file_list   = kw.get("file_list")
-    target_list = []
-
-    for d in file_list :
-      fileid = d["fileid"]
-      target = d.get("path_target", "data/input/adonwload/googlefile_" + str(random.randrange(1000) )  )
-
-      os.makedirs(os.path.dirname(target), exist_ok=True)
-
-      url = f'https://drive.google.com/uc?id={fileid}'
-      gdown.download(url, target, quiet=False)
-      target_list.append( target  )
-
-    return target_list
-
-
-
-def download_dtopbox(data_pars):
-  """
-
-   dataset/
-
-   Prefix based :
-      repo::
-      dropbox::
-
-   import_data
-
-   preprocess_data
-
-  download_data({"from_path" :  "tabular",
-                        "out_path" :  path_norm("ztest/dataset/text/") } )
-
-  Open URL
-     https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAoFh0aO9RqwwROksGgasIha?dl=0
-
-
-  """
-  from cli_code.cli_download import Downloader
-
-  folder = data_pars['from_path']  # dataset/text/
-
-  urlmap = {
-     "text" :    "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AADHrhC7rLkd42_CEqK6A9oYa/dataset/text?dl=1&subfolder_nav_tracking=1"
-     ,"tabular" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAxZkJTGSumLADzj3B5wbA0a/dataset/tabular?dl=1&subfolder_nav_tracking=1"
-     ,"pretrained" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AACL3LHW1USWrvsV5hipw27ia/model_pretrained?dl=1&subfolder_nav_tracking=1"
-
-     ,"vision" : "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AAAM4k7rQrkjBo09YudYV-6Ca/dataset/vision?dl=1&subfolder_nav_tracking=1"
-     ,"recommender": "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/AABIb2JjQ6aQHwfq5CU0ypHOa/dataset/recommender?dl=1&subfolder_nav_tracking=1"
-
-  }
-
-  url = urlmap[folder]
-
-  #prefix = "https://www.dropbox.com/sh/d2n3hgsq2ycpmjf/"
-  #url= f"{prefix}/AADHrhC7rLkd42_CEqK6A9oYa/{folder}?dl=1&subfolder_nav_tracking=1"
-
-  out_path = data_pars['out_path']
-
-  zipname = folder.split("/")[0]
-
-
-  os.makedirs(out_path, exist_ok=True)
-  downloader = Downloader(url)
-  downloader.download(out_path)
-
-  import zipfile
-  with zipfile.ZipFile( out_path + "/" + zipname + ".zip" ,"r") as zip_ref:
-      zip_ref.extractall(out_path)
-
-
-
-
-####################################################################################
-
-
-def import_data():
-  def sent_generator(TRAIN_DATA_FILE, chunksize):
-      import pandas as pd
-      reader = pd.read_csv(TRAIN_DATA_FILE, chunksize=chunksize, iterator=True)
-      for df in reader:
-          val3  = df.iloc[:, 3:4].values.tolist()
-          val4  = df.iloc[:, 4:5].values.tolist()
-          flat3 = [item for sublist in val3 for item in sublist]
-          flat4 = [str(item) for sublist in val4 for item in sublist]
-          texts = []
-          texts.extend(flat3[:])
-          texts.extend(flat4[:])
-
-          sequences  = model.tokenizer.texts_to_sequences(texts)
-          data_train = pad_sequences(sequences, maxlen=data_pars["MAX_SEQUENCE_LENGTH"])
-          yield [data_train, data_train]
-
-  model.model.fit(sent_generator(data_pars["train_data_path"], batch_size / 2),
-                  epochs          = epochs,
-                  steps_per_epoch = n_steps,
-                  validation_data = (data_pars["data_1_val"], data_pars["data_1_val"]))
-
-
-
-
-
-
-def get_dataset(data_pars) :
-  """
-    path:
-    is_local  : Local to the repo
-    data_type:
-    train : 1/0
-    data_source :  ams
-  """
-  dd = data_pars
-
-  if not d.get('is_local') is None :
-      dd['path'] = os_package_root_path(__file__, 0, dd['path'] )
-
-
-  if dd['train'] :
-     df = pd.read_csv(path)
-
-
-
-     ### Donwload from external
-
-
-     ## Get from csv, local
-
-
-     ## Get from csv, external
-
-
-     ### Get from external tool
 
 

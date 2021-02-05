@@ -1,24 +1,32 @@
 # pylint: disable=C0321,C0103,C0301,E1305,E1121,C0302,C0330,C0111,W0613,W0611,R1705
 # -*- coding: utf-8 -*-
 """
-pip install peak-engines
+Template for sklearn type of model:
 
-import peak_engines
-model = peak_engines.WarpedLinearRegressionModel()
-model.fit(X_train, y_train)
+    #### 1. Global variables    : global variables **model** and **session**.
+
+    #### 2.  init method        : init method to initialize global variables `model and session`
+
+    #### 3. class Model         :   storing model details and parameters.
+
+    #### 4. preprocess method   :   preprocessing dataset.
+
+    #### 5. fit method          :   fitting the defined model and inputted data.
+
+    #### 6. predict method      :   predicting using the fitted model.
+
+    #### 7. save method         :   saving the model in the pickle file.
+
+    #### 8. load_model method   :   loading, the model saved in a pickle file.
+
+    #### 9. load_info method    :   loading the in mation stored in the pickle file.
+
+    #### 10. get_dataset method :   retrieving the dataset.
+
+    #### 11. get_params method  :   retrieving parameters.
 
 
-https://github.com/rnburn/peak-engines/blob/master/example/warped_linear_regression/boston_housing.ipynb
 
-
-
-
-Generic template for new model.
-(n_estimators=100, *, criterion='mse', max_depth=None, min_samples_split=2,
- min_samples_leaf=1, min_weight_fraction_leaf=0.0, max_features='auto', 
- max_leaf_nodes=None, min_impurity_decrease=0.0, min_impurity_split=None, 
- bootstrap=True, oob_score=False, n_jobs=None, random_state=None, verbose=0, 
- warm_start=False, ccp_alpha=0.0, max_samples=None)[source]
 """
 import os
 import pandas as pd, numpy as np, scipy as sci
@@ -31,6 +39,11 @@ from sklearn.cluster import *
 from sklearn.tree import *
 from lightgbm import LGBMModel, LGBMRegressor, LGBMClassifier
 
+
+try :
+   from supervised.automl import *
+except:
+    print('cannot import automl')    
 
 try :
     #### All are Un-supervised Model

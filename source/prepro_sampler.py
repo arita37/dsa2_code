@@ -357,6 +357,21 @@ def pd_col_genetic_transform(df=None, col=None, pars=None):
 
 
 
+params:
+        df          : (pandas dataframe) original dataframe
+        n_samples   : (int) number of samples you would like to add, defaul is 10%
+        primary_key : (String) the primary key of dataframe
+        aggregate   : (boolean) if False, prints SVD metrics, else it averages them
+        
+returns:
+        df_new      : (pandas dataframe) df with more augmented data
+        col         : (list of strings) same columns 
+'''
+def pd_vae_augmentation(df, col=None, pars=None, n_samples=None, primary_key=None, aggregate=True):
+    
+    from sdv.demo import load_tabular_demo
+    from sdv.tabular import TVAE
+    from sdv.evaluation import evaluate
 
 
 def pd_augmentation_sdv(df, col=None, pars={})  :

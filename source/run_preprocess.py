@@ -131,7 +131,7 @@ def preprocess(path_train_X="", path_train_y="", path_pipeline_export="", cols_g
     pipe_list_X  = [ task for task in pipe_list  if task.get('type', '')  not in ['coly', 'filter']  ]
     pipe_list_y  = [ task for task in pipe_list  if task.get('type', '')   in ['coly']  ]
     pipe_filter  = [ task for task in pipe_list  if task.get('type', '')   in ['filter']  ]
-    ##### Load data ###########################################################################
+    ##### Load data #################################################################################
     df = load_dataset(path_train_X, path_train_y, colid, n_sample= n_sample)
 
 
@@ -156,6 +156,7 @@ def preprocess(path_train_X="", path_train_y="", path_pipeline_export="", cols_g
         pars['path_features_store']  = path_features_store
         pars['path_pipeline_export'] = path_pipeline_export
         df, col_pars                 = pipe_fun(df, cols_group['coly'], pars=pars)   ### coly can remove rows
+
         logs("----------df----------\n",df)
         dfi_all['coly']              = df[cols_group['coly'] ]
         cols_family_all['coly']      = cols_group['coly']
@@ -181,12 +182,14 @@ def preprocess(path_train_X="", path_train_y="", path_pipeline_export="", cols_g
        pars['path_pipeline_export'] = path_pipeline_export   ### Store pipeline
 
        if col_type == 'cross':
+           log("###################  Adding Cross ###################################################")
            pars['dfnum_hot']       = dfi_all['colnum_onehot']  ### dfnum_hot --> dfcross
            pars['dfcat_hot']       = dfi_all['colcat_onehot']
            pars['colid']           = colid
            pars['colcross_single'] = cols_group.get('colcross', [])
 
        elif col_type == 'add_coly':
+           log( 'add_coly genetic', cols_group['coly'] )
            pars['coly'] = cols_group['coly']
            pars['dfy']  = dfi_all[ 'coly' ]  ### Transformed dfy
 
@@ -394,6 +397,11 @@ def run_preprocess(config_name, config_path, n_sample=5000,
     except :
         cols_group = json.load(open(path_data + "/cols_group.json", mode='r'))
 
+    #pars_download = model_dict['data_pars'].get('download_pars', None )
+    #if pars_download :
+    #    for url, target_path in pars_download['']:
+    #        pass
+
 
     log("#### Preprocess  #################################################################")
     preprocess_pars = model_dict['model_pars']['pre_process_pars']
@@ -407,7 +415,7 @@ def run_preprocess(config_name, config_path, n_sample=5000,
                                  preprocess_pars,  path_features_store)
     model_dict['data_pars']['coly'] = cols['coly']
 
-    ### Generate actual column names from colum groups : colnum , colcat
+    ### Generate actual column names from colum groups  INTO a single list of columns
     model_dict['data_pars']['cols_model'] = sum([  cols[colgroup] for colgroup in model_dict['data_pars']['cols_model_group'] ]   , [])
     log(  model_dict['data_pars']['cols_model'] , model_dict['data_pars']['coly'])
 

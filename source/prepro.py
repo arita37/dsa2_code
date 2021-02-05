@@ -875,7 +875,7 @@ def pd_col_genetic_transform(df=None, col=None, pars=None):
         pars = load(pars['path_pipeline'] + f"/{prefix}_pars.pkl" )
     else :     ### Training time
         coly     = pars['coly']
-        train_y  = df[coly]
+        train_y  = pars['dfy']
         gp = SymbolicTransformer(hall_of_fame  = train_X.shape[1] + 1,  ### Buggy
                                  n_components  = pars_genetic.get('n_components', train_X.shape[1] ),
                                  feature_names = feature_name_,
