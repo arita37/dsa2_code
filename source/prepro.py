@@ -872,7 +872,7 @@ def pd_col_genetic_transform(df=None, col=None, pars=None):
 
     if 'path_pipeline' in pars :   #### Inference time
         gp   = load(pars['path_pipeline'] + f"/{prefix}_model.pkl" )
-        pars = load(pars['path_pipeline'] + f"/{prefix}_pars.pkl" )
+        pars = load(pars['path_pipeline'] + f"/{prefix}_pars.pkl"  )
     else :     ### Training time
         coly     = pars['coly']
         train_y  = pars['dfy']

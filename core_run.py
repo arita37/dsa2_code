@@ -38,6 +38,7 @@ print(dir_data)
 def get_global_pars(config_uri=""):
   log("#### Model Params Dynamic loading  ##########################################")
   from source.util_feature import load_function_uri
+  print("config_uri",config_uri)
   model_dict_fun = load_function_uri(uri_name=config_uri )
 
   #### Get dict + Update Global variables
@@ -233,6 +234,18 @@ def hyperparam_wrapper(config_full="",
     log(best_dict)
     log(path_output)
 
+########################################################################################
+####### Inference / Deploy ######################################################################
+import uvicorn
+def deploy():
+    """
+    Simple deploy using uvicorn on runtime. U can use gunicorn instead.
+
+    #### Important info: First request will always take time
+
+    return: Service
+    """
+    uvicorn.run("core_deploy:app", host="127.0.0.1", port=8000, log_level="info")
 
 
 ##########################################################################################

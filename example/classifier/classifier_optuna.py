@@ -109,7 +109,7 @@ def titanic_lightoptuna():
 
     model_dict = {'model_pars': {
     ### LightGBM API model   #######################################
-    'model_file'  : 'model_optuna.py',  ###Optional one
+    'model_file'  : 'optuna_lightgbm.py',  ###Optional one
     'model_class' :  model_class
     ,'model_pars':  {'objective': 'binary',
                      'n_estimators': 50,

@@ -8,7 +8,7 @@
 
 """
 import warnings, copy, os, sys
-warnings.filterwarnings('ignore')
+warnings.filterwarnings("ignore")
 
 ####################################################################################
 ###### Path ########################################################################
@@ -18,7 +18,25 @@ THIS_FILEPATH  =  os.path.abspath(__file__)
 sys.path.append(root_repo)
 from source.util_feature import save,os_get_function_name
 
+#### Libraries for fastapi modeling ####
+from typing import List
+from pydantic import BaseModel
 
+#### Model for Body Request FastAPI #####
+class BodyOne(BaseModel):
+    Age: int
+    Embarked: str
+    Fare: float
+    Name: str
+    Parch: int
+    Sex: str
+    SibSp: int
+    Ticket: int
+    Pclass: int
+
+#### List of Inferences for predict as Batch ####
+class BodyBatch(BaseModel):
+    Batch: List[BodyOne]
 
 
 def global_pars_update(model_dict,  data_name, config_name):
@@ -26,44 +44,44 @@ def global_pars_update(model_dict,  data_name, config_name):
     dir_data  = root_repo + "/data/"  ; print("dir_data", dir_data)
 
     m                      = {}
-    m['config_path']       = THIS_FILEPATH  
-    m['config_name']       = config_name
+    m["config_path"]       = THIS_FILEPATH  
+    m["config_name"]       = config_name
 
     #### peoprocess input path
-    m['path_data_preprocess'] = dir_data + f'/input/{data_name}/train/'
+    m["path_data_preprocess"] = dir_data + f"/input/{data_name}/train/"
 
     #### train input path
     dir_data_url              = "https://github.com/arita37/dsa2_data/tree/main/"  #### Remote Data directory
-    m['path_data_train']      = dir_data_url + f'/input/{data_name}/train/'
-    m['path_data_test']       = dir_data_url + f'/input/{data_name}/test/'
-    #m['path_data_val']       = dir_data + f'/input/{data_name}/test/'
+    m["path_data_train"]      = dir_data_url + f"/input/{data_name}/train/"
+    m["path_data_test"]       = dir_data_url + f"/input/{data_name}/test/"
+    #m["path_data_val"]       = dir_data + f"/input/{data_name}/test/"
 
     #### train output path
-    m['path_train_output']    = dir_data + f'/output/{data_name}/{config_name}/'
-    m['path_train_model']     = dir_data + f'/output/{data_name}/{config_name}/model/'
-    m['path_features_store']  = dir_data + f'/output/{data_name}/{config_name}/features_store/'
-    m['path_pipeline']        = dir_data + f'/output/{data_name}/{config_name}/pipeline/'
+    m["path_train_output"]    = dir_data + f"/output/{data_name}/{config_name}/"
+    m["path_train_model"]     = dir_data + f"/output/{data_name}/{config_name}/model/"
+    m["path_features_store"]  = dir_data + f"/output/{data_name}/{config_name}/features_store/"
+    m["path_pipeline"]        = dir_data + f"/output/{data_name}/{config_name}/pipeline/"
 
 
     #### predict  input path
-    m['path_pred_data']       = dir_data + f'/input/{data_name}/test/'
-    m['path_pred_pipeline']   = dir_data + f'/output/{data_name}/{config_name}/pipeline/'
-    m['path_pred_model']      = dir_data + f'/output/{data_name}/{config_name}/model/'
+    m["path_pred_data"]       = dir_data + f"/input/{data_name}/test/"
+    m["path_pred_pipeline"]   = dir_data + f"/output/{data_name}/{config_name}/pipeline/"
+    m["path_pred_model"]      = dir_data + f"/output/{data_name}/{config_name}/model/"
 
     #### predict  output path
-    m['path_pred_output']     = dir_data + f'/output/{data_name}/pred_{config_name}/'
+    m["path_pred_output"]     = dir_data + f"/output/{data_name}/pred_{config_name}/"
 
     #####  Generic
-    m['n_sample']             = model_dict['data_pars'].get('n_sample', 5000)
+    m["n_sample"]             = model_dict["data_pars"].get("n_sample", 5000)
 
-    model_dict[ 'global_pars'] = m
+    model_dict[ "global_pars"] = m
     return model_dict
 
 
 
 ####################################################################################
 ##### Params########################################################################
-config_default   = 'titanic_lightgbm'    ### name of function which contains data configuration
+config_default   = "titanic_lightgbm"    ### name of function which contains data configuration
 
 
 # data_name    = "titanic"     ### in data/input/
@@ -85,7 +103,7 @@ def titanic_lightgbm() :
        used for titanic classification task
     """
     data_name    = "titanic"         ### in data/input/
-    model_class  = 'LGBMClassifier'  ### ACTUAL Class name for model_sklearn.py
+    model_class  = "LGBMClassifier"  ### ACTUAL Class name for model_sklearn.py
     n_sample     = 1000
 
     def post_process_fun(y):   ### After prediction is done
@@ -95,73 +113,73 @@ def titanic_lightgbm() :
         return  int(y)
 
 
-    model_dict = {'model_pars': {
+    model_dict = {"model_pars": {
         ### LightGBM API model   #######################################
-         'model_class': model_class
-        ,'model_pars' : {'objective': 'binary',
-                           'n_estimators': 10,
-                           'learning_rate':0.001,
-                           'boosting_type':'gbdt',     ### Model hyperparameters
-                           'early_stopping_rounds': 5
+         "model_class": model_class
+        ,"model_pars" : {"objective": "binary",
+                           "n_estimators": 10,
+                           "learning_rate":0.001,
+                           "boosting_type":"gbdt",     ### Model hyperparameters
+                           "early_stopping_rounds": 5
                         }
 
-        , 'post_process_fun' : post_process_fun   ### After prediction  ##########################################
-        , 'pre_process_pars' : {'y_norm_fun' :  pre_process_fun ,  ### Before training  ##########################
+        , "post_process_fun" : post_process_fun   ### After prediction  ##########################################
+        , "pre_process_pars" : {"y_norm_fun" :  pre_process_fun ,  ### Before training  ##########################
 
 
         ### Pipeline for data processing ##############################
-        'pipe_list': [
+        "pipe_list": [
         #### coly target prorcessing
-        {'uri': 'source/prepro.py::pd_coly',                 'pars': {}, 'cols_family': 'coly',       'cols_out': 'coly',           'type': 'coly'         },
+        {"uri": "source/prepro.py::pd_coly",                 "pars": {}, "cols_family": "coly",       "cols_out": "coly",           "type": "coly"         },
 
 
-        {'uri': 'source/prepro.py::pd_colnum_bin',           'pars': {}, 'cols_family': 'colnum',     'cols_out': 'colnum_bin',     'type': ''             },
-        {'uri': 'source/prepro.py::pd_colnum_binto_onehot',  'pars': {}, 'cols_family': 'colnum_bin', 'cols_out': 'colnum_onehot',  'type': ''             },
+        {"uri": "source/prepro.py::pd_colnum_bin",           "pars": {}, "cols_family": "colnum",     "cols_out": "colnum_bin",     "type": ""             },
+        {"uri": "source/prepro.py::pd_colnum_binto_onehot",  "pars": {}, "cols_family": "colnum_bin", "cols_out": "colnum_onehot",  "type": ""             },
 
         #### catcol INTO integer,   colcat into OneHot
-        {'uri': 'source/prepro.py::pd_colcat_bin',           'pars': {}, 'cols_family': 'colcat',     'cols_out': 'colcat_bin',     'type': ''             },
-        {'uri': 'source/prepro.py::pd_colcat_to_onehot',     'pars': {}, 'cols_family': 'colcat_bin', 'cols_out': 'colcat_onehot',  'type': ''             },
+        {"uri": "source/prepro.py::pd_colcat_bin",           "pars": {}, "cols_family": "colcat",     "cols_out": "colcat_bin",     "type": ""             },
+        {"uri": "source/prepro.py::pd_colcat_to_onehot",     "pars": {}, "cols_family": "colcat_bin", "cols_out": "colcat_onehot",  "type": ""             },
 
 
         ### Cross_feat = feat1 X feat2
-        {'uri': 'source/prepro.py::pd_colcross',             'pars': {}, 'cols_family': 'colcross',   'cols_out': 'colcross_pair',  'type': 'cross'},
+        {"uri": "source/prepro.py::pd_colcross",             "pars": {}, "cols_family": "colcross",   "cols_out": "colcross_pair",  "type": "cross"},
 
 
         #### Example of Custom processor
-        {'uri':  THIS_FILEPATH + '::pd_col_myfun',   'pars': {}, 'cols_family': 'colnum',   'cols_out': 'col_myfun',  'type': '' },                
+        {"uri":  THIS_FILEPATH + "::pd_col_myfun",   "pars": {}, "cols_family": "colnum",   "cols_out": "col_myfun",  "type": "" },                
 
 
         ],
                }
         },
 
-      'compute_pars': { 'metric_list': ['accuracy_score','average_precision_score']
+      "compute_pars": { "metric_list": ["accuracy_score","average_precision_score"]
 
-                        ,'mlflow_pars' : {}   ### Not empty --> use mlflow
+                        ,"mlflow_pars" : {}   ### Not empty --> use mlflow
                       },
 
-      'data_pars': { 'n_sample' : n_sample,
+      "data_pars": { "n_sample" : n_sample,
 
-          'download_pars' : None,
+          "download_pars" : None,
 
 
-          'cols_input_type' : cols_input_type_1,
+          "cols_input_type" : cols_input_type_1,
           ### family of columns for MODEL  #########################################################
           #  "colnum", "colnum_bin", "colnum_onehot", "colnum_binmap",  #### Colnum columns
           #  "colcat", "colcat_bin", "colcat_onehot", "colcat_bin_map",  #### colcat columns
-          #  'colcross_single_onehot_select', "colcross_pair_onehot",  'colcross_pair',  #### colcross columns  'coldate', 'coltext',
-          'cols_model_group': [ 'colnum_bin',
-                                'colcat_bin',
-                                # 'coltext',
-                                # 'coldate',
-                                'colcross_pair',
+          #  "colcross_single_onehot_select", "colcross_pair_onehot",  "colcross_pair",  #### colcross columns  "coldate", "coltext",
+          "cols_model_group": [ "colnum_bin",
+                                "colcat_bin",
+                                # "coltext",
+                                # "coldate",
+                                "colcross_pair",
                                
                                ### example of custom
-                               'col_myfun'
+                               "col_myfun"
                               ]
 
           ### Filter data rows   ##################################################################
-         ,'filter_pars': { 'ymax' : 2 ,'ymin' : -1 }
+         ,"filter_pars": { "ymax" : 2 ,"ymin" : -1 }
 
          }
       }
@@ -177,10 +195,10 @@ def pd_col_myfun(df=None, col=None, pars={}):
          Example of custom Processor
     """
     from source.util_feature import save, load
-    prefix = 'col_myfun`'
-    if 'path_pipeline' in pars :   #### Inference time LOAD previous pars
-        prepro   = load(pars['path_pipeline'] + f"/{prefix}_model.pkl" )
-        pars     = load(pars['path_pipeline'] + f"/{prefix}_pars.pkl" )
+    prefix = "col_myfun`"
+    if "path_pipeline" in pars :   #### Inference time LOAD previous pars
+        prepro   = load(pars["path_pipeline"] + f"/{prefix}_model.pkl" )
+        pars     = load(pars["path_pipeline"] + f"/{prefix}_pars.pkl" )
         pars     = {} if pars is None else  pars
     #### Do something #################################################################
     df_new         = df[col]  ### Do nithi
@@ -193,14 +211,14 @@ def pd_col_myfun(df=None, col=None, pars={}):
 
 
     ###################################################################################
-    if 'path_features_store' in pars and 'path_pipeline_export' in pars:
-       save(prepro,         pars['path_pipeline_export'] + f"/{prefix}_model.pkl" )
-       save(cols_new,       pars['path_pipeline_export'] + f"/{prefix}.pkl" )
-       save(pars_new,       pars['path_pipeline_export'] + f"/{prefix}_pars.pkl" )
+    if "path_features_store" in pars and "path_pipeline_export" in pars:
+       save(prepro,         pars["path_pipeline_export"] + f"/{prefix}_model.pkl" )
+       save(cols_new,       pars["path_pipeline_export"] + f"/{prefix}.pkl" )
+       save(pars_new,       pars["path_pipeline_export"] + f"/{prefix}_pars.pkl" )
 
-    col_pars = {'prefix' : prefix , 'path' :   pars.get('path_pipeline_export', pars.get('path_pipeline', None)) }
-    col_pars['cols_new'] = {
-        'col_myfun' :  cols_new  ### list
+    col_pars = {"prefix" : prefix , "path" :   pars.get("path_pipeline_export", pars.get("path_pipeline", None)) }
+    col_pars["cols_new"] = {
+        "col_myfun" :  cols_new  ### list
     }
     return df_new, col_pars
 
@@ -225,23 +243,23 @@ def data_profile(path_data="", path_output="", n_sample= 5000):
 
 ###################################################################################
 ########## Preprocess #############################################################
-### def preprocess(config='', nsample=1000):
+### def preprocess(config="", nsample=1000):
 from core_run import preprocess
 
 """
 def preprocess(config=None, nsample=None):
     config_name  = config  if config is not None else config_default
     mdict        = globals()[config_name]()
-    m            = mdict['global_pars']
+    m            = mdict["global_pars"]
     print(mdict)
 
     from source import run_preprocess
     run_preprocess.run_preprocess(config_name   =  config_name,
-                                  config_path   =  m['config_path'],
-                                  n_sample      =  nsample if nsample is not None else m['n_sample'],
+                                  config_path   =  m["config_path"],
+                                  n_sample      =  nsample if nsample is not None else m["n_sample"],
 
                                   ### Optonal
-                                  mode          =  'run_preprocess')
+                                  mode          =  "run_preprocess")
 """
 
 
@@ -254,13 +272,13 @@ def train(config=None, nsample=None):
 
     config_name  = config  if config is not None else config_default
     mdict        = globals()[config_name]()
-    m            = mdict['global_pars']
+    m            = mdict["global_pars"]
     print(mdict)
     
     from source import run_train
     run_train.run_train(config_name       =  config_name,
-                        config_path       =  m['config_path'],
-                        n_sample          =  nsample if nsample is not None else m['n_sample']
+                        config_path       =  m["config_path"],
+                        n_sample          =  nsample if nsample is not None else m["n_sample"]
                         )
 """
 
@@ -276,26 +294,35 @@ def check():
 
 ####################################################################################
 ####### Inference ##################################################################
-# predict(config='', nsample=10000)
+# predict(config="", nsample=10000)
 from core_run import predict
 
 """
 def predict(config=None, nsample=None):
     config_name  = config  if config is not None else config_default
     mdict        = globals()[config_name]()
-    m            = mdict['global_pars']
+    m            = mdict["global_pars"]
 
 
     from source import run_inference
     run_inference.run_predict(config_name = config_name,
-                              config_path = m['config_path'],
-                              n_sample    = nsample if nsample is not None else m['n_sample'],
+                              config_path = m["config_path"],
+                              n_sample    = nsample if nsample is not None else m["n_sample"],
 
                               #### Optional
-                              path_data   = m['path_pred_data'],
-                              path_output = m['path_pred_output'],
+                              path_data   = m["path_pred_data"],
+                              path_output = m["path_pred_output"],
                               model_dict  = None
                               )
+"""
+
+from core_run import deploy
+
+"""
+def deploy():
+    import uvicorn
+    uvicorn.run("script_name:fastapi_app", host="127.0.0.1", port=8000, log_level="info")
+
 """
 
 
@@ -305,13 +332,14 @@ def predict(config=None, nsample=None):
 python  titanic_classifier.py  data_profile
 python  titanic_classifier.py  preprocess  --nsample 100
 python  titanic_classifier.py  train       --nsample 200
-python  titanic_classifier.py  check
 python  titanic_classifier.py  predict
+python  titanic_classifier.py  deploy
 
 
 """
+
 if __name__ == "__main__":
-    d = { 'data_profile': data_profile,  'train' : train, 'predict' : predict, 'config' : config_default }
+    d = { "data_profile": data_profile,  "train" : train, "predict" : predict, "config" : config_default ,"deploy":deploy}
     import fire
     fire.Fire(d)
     

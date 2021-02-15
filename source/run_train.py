@@ -242,12 +242,18 @@ def run_train(config_name, config_path="source/config_model.py", n_sample=5000,
 
     elif mode == "load_preprocess"  :  #### Load existing data
         dfXy, cols      = preprocess_load(path_train_X, path_train_y, path_pipeline, cols_group, n_sample,
-                                     preprocess_pars,  path_features_store=path_features_store)
+                                          preprocess_pars,  path_features_store=path_features_store)
 
 
-    ### Actual column for label y and Input X (colnum , colcat
+    ### Actual column names for label y and Input X (colnum , colcat) 
     model_dict['data_pars']['coly']       = cols['coly']
     model_dict['data_pars']['cols_model'] = sum([  cols[colgroup] for colgroup in model_dict['data_pars']['cols_model_group'] ]   , [])
+
+    #### Require for Deep Neural model: Sparse, Dense   : keras CTR model
+    model_dict['data_pars']['cols_model_type'] = {
+       'coldense' :  sum([  cols[colgroup] for colgroup in [ 'colnum' ] ]   , []), 
+       'colsparse':  sum([  cols[colgroup] for colgroup in model_dict['data_pars']['cols_model_group'] if colgroup != 'colnum' ]   , [])
+    }
 
    
     log("#### Train model: #############################################################")
