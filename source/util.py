@@ -18,7 +18,6 @@ import uuid
 
 #############################################################################################
 # print("os.getcwd", os.getcwd())
-
 def log(*s, n=0, m=1, **kw):
     sspace = "#" * n
     sjump = "\n" * m
@@ -30,6 +29,293 @@ class dict2(object):
     def __init__(self, d):
         self.__dict__ = d
 
+
+
+from collections.abc import Mapping
+class dictLazy(Mapping):
+    """       .parquet --->  disk retrieval in pandas
+         hdfs     --->  disk retrieval in pandas
+        # Lazy dict allows storing function and argument pairs when initializing the dictionary,
+        # it calculates the value only when fetching it.
+        # In this examole, if the key starts with '#', it would accept a (function, args) tuple as value and
+        # returns the calculated result when fetching the values.
+
+        # Initialize a lazy dict
+        d = ictLasy(
+            {
+                '#1': (lambda x: x + 1, 0),
+                '#2': (lambda x: x + 2, 0),
+                '#3': (lambda x: x + 3, 0)
+            }
+        )
+        A collection of files, nrows
+
+# Example of iterator=True. Note iterator=False by default.
+reader = pd.read_csv('some_data.csv', iterator=True)
+reader.get_chunk(100)
+This gets the first 100 rows, running through a loop gets the next 100 rows and so on.
+
+import pandas as pd
+from glob import glob
+files = sorted(glob('dat.parquet/part*'))
+
+data = pd.read_parquet(files[0],engine='fastparquet')
+for f in files[1:]:
+    data = pd.concat([data,pd.read_parquet(f,engine='fastparquet')])
+
+    # Save into 50,000 row chunks,
+# so we should get file saved into two chunks.
+
+df.to_parquet('/users/nick/desktop/test.parquet',
+              engine='fastparquet',
+              row_group_offsets=50000)
+
+    # Then we have to read it in using the `fastparquet`
+    # library itself (there's no way to do this directly from
+    # pandas I'm afraid):
+
+    from fastparquet import ParquetFile
+    pf = ParquetFile('/users/nick/desktop/test.parquet')
+
+    # Iterates over row groups
+    for rg in pf.iter_row_groups():
+        print(rg)
+
+
+
+    """
+    def __init__(self, *args, **kw):
+        self._raw_dict = dict(*args, **kw)
+
+    def __getitem__(self, key):
+        if key.startswith('#'):
+            path = self._raw_dict.__getitem__(key)
+
+            if 'hdfs:' in path :
+                valx = load_hdfs(path)
+
+            elif '.parquet' in path :
+                pass
+
+            elif 'spark:'  in path  :
+                pass
+            return valx
+        else :
+            return self._raw_dict.__getitem__(key)
+
+    def __iter__(self):
+        return iter(self._raw_dict)
+
+    def __len__(self):
+        return len(self._raw_dict)
+
+
+
+
+
+
+        
+#############################################################################################        
+# pylint: disable=C0321,C0103,E1221,C0301,E1305,E1121,C0302,C0330
+# -*- coding: utf-8 -*-
+"""
+https://docs.python-guide.org/writing/logging/
+https://docs.python.org/3/howto/logging-cookbook.html
+
+python util_log.py test_log
+
+
+"""
+import logging
+import os
+import random
+import socket
+import sys
+from logging.handlers import TimedRotatingFileHandler
+import datetime
+import yaml
+
+################### Logs #################################################################
+APP_ID  = __file__ + "_" + str(os.getpid()) + "_" + str(socket.gethostname())
+APP_ID2 = str(os.getpid()) + "_" + str(socket.gethostname())
+
+LOG_FILE = os.path.join(os.path.dirname(os.path.abspath(__file__)), "logfile.log")
+
+FORMATTER_0 = logging.Formatter("%(message)s")
+FORMATTER_1 = logging.Formatter("%(asctime)s,  %(name)s, %(levelname)s, %(message)s")
+FORMATTER_2 = logging.Formatter("%(asctime)s.%(msecs)03dZ %(levelname)s %(message)s")
+FORMATTER_3 = logging.Formatter("%(asctime)s  %(levelname)s %(message)s")
+FORMATTER_4 = logging.Formatter("%(asctime)s, %(process)d, %(filename)s,    %(message)s")
+
+FORMATTER_5 = logging.Formatter(
+    "%(asctime)s, %(process)d, %(pathname)s%(filename)s, %(funcName)s, %(lineno)s,  %(message)s"
+)
+
+
+#########################################################################################
+def create_appid(filename):
+    # appid  = filename + ',' + str(os.getpid()) + ',' + str( socket.gethostname() )
+    appid = filename + "," + str(os.getpid())
+    return appid
+
+
+def create_logfilename(filename):
+    return filename.split("/")[-1].split(".")[0] + ".log"
+
+
+def create_uniqueid():
+    return datetime.datetime.now().strftime(  "_%Y%m%d%H%M%S_"  )   + str(random.randint(1000, 9999))
+    # return arrow.utcnow().to("Japan").format("_YYYYMMDDHHmmss_") + str(random.randint(1000, 9999))
+
+
+########################################################################################
+################### Logger #############################################################
+class logger_class(object):
+    """
+    Higher level of verbosity =1, 2, 3
+    logger = logger_class()
+
+    def log(*s):
+        logger.log(*s, level=1)
+
+    def log1(*s):
+        logger.log(*s, level=1)
+
+    """
+    def __init__(self, config_file=None, verbose=True) :
+        self.config     = self.load_config(config_file)
+        if verbose: print(self.config)
+        d = self.config['logger_config']
+        self.logger     = logger_setup( **d )
+        self.level_max  = self.config.get('verbosity', 1)
+
+
+    def load_config(self, config_file_path=None) :
+        try :
+            if config_file_path is None :
+                config_file_path = 'config.yaml'
+
+            with open(config_file_path, 'r') as f:
+                return yaml.load(f)
+
+        except Exception as e :
+            return {'logger_config': {}, 'verbosity': 1}  ## Default parameters
+
+
+    def log(self,*s, level=1) :
+        if level <= self.level_max : 
+            self.logger.info(*s)
+
+
+    def debug(self,*s, level=1) :
+        if level <= self.level_max : 
+            self.logger.debug(*s)
+
+
+
+##########################################################################################
+##########################################################################################
+def logger_setup(logger_name=None, log_file=None, formatter='FORMATTER_0', isrotate=False, 
+    isconsole_output=True, logging_level='info',):
+    """
+    my_logger = util_log.logger_setup("my module name", log_file="")
+    APP_ID    = util_log.create_appid(__file__ )
+    def log(*argv):
+      my_logger.info(",".join([str(x) for x in argv]))
+  
+   """
+    logging_level = {  'info':logging.INFO, 'debug' : logging.DEBUG }[logging_level]
+    formatter     = {'FORMATTER_0': FORMATTER_0, 'FORMATTER_1': FORMATTER_1}.get(formatter, formatter)
+
+    if logger_name is None:
+        logger = logging.getLogger()  # Gets the root logger
+    else:
+        logger = logging.getLogger(logger_name)
+
+    logger.setLevel(logging_level)  # better to have too much log than not enough
+
+    if isconsole_output:
+        logger.addHandler(logger_handler_console(formatter))
+
+    if log_file is not None:
+        logger.addHandler(
+            logger_handler_file(formatter=formatter, log_file_used=log_file, isrotate=isrotate)
+        )
+
+    # with this pattern, rarely necessary to propagate the error up to parent
+    logger.propagate = False
+    return logger
+
+
+def logger_handler_console(formatter=None):
+    formatter = FORMATTER_1 if formatter is None else formatter
+    console_handler = logging.StreamHandler(sys.stdout)
+    console_handler.setFormatter(formatter)
+    return console_handler
+
+
+def logger_handler_file(isrotate=False, rotate_time="midnight", formatter=None, log_file_used=None):
+    formatter = FORMATTER_1 if formatter is None else formatter
+    log_file_used = LOG_FILE if log_file_used is None else log_file_used
+    if isrotate:
+        print("Rotate log", rotate_time)
+        fh = TimedRotatingFileHandler(log_file_used, when=rotate_time)
+        fh.setFormatter(formatter)
+        return fh
+    else:
+        fh = logging.FileHandler(log_file_used)
+        fh.setFormatter(formatter)
+        return fh
+
+
+def logger_setup2(name=__name__, level=None):
+    _ = level
+
+    # logger defines
+    logger = logging.getLogger(name)
+    logger.setLevel(logging.DEBUG)
+    ch = logging.StreamHandler()
+    ch.setLevel(logging.DEBUG)
+    formatter = logging.Formatter()
+    ch.setFormatter(formatter)
+    logger.addHandler(ch)
+    return logger
+
+
+
+
+###########################################################################################################
+def test_log():
+    logger =logger_class(verbose=True)
+
+    def log(*s):
+       logger.log(*s, level=1)
+
+    def log2(*s):
+       logger.log(*s, level=2)
+
+    def log3(*s):
+       logger.log(*s, level=3)
+
+    log( "level 1"  )
+    log2( "level 2"  )
+    log3( "level 3"  )
+
+
+
+
+###########################################################################################################
+###########################################################################################################
+if __name__ == "__main__":
+    import fire
+    fire.Fire()
+    
+
+
+        
+        
+        
+        
 
 ############################################################################################################
 def download_googledrive(file_list=[ {  "fileid": "1-K72L8aQPsl2qt_uBF-kzbai3TYG6Qg4",  "path_target":  "data/input/download/test.json"}], **kw):

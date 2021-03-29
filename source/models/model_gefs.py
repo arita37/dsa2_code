@@ -1,39 +1,61 @@
 # pylint: disable=C0321,C0103,C0301,E1305,E1121,C0302,C0330,C0111,W0613,W0611,R1705
 # -*- coding: utf-8 -*-
 """
+python model_gef.py test
+
+
+
 """
-import os
-import pandas as pd
-import numpy as np
-import sklearn
-
-try :
-  from gefs import RandomForest
-except :
-  os.system( " python -m pip install git+https://github.com/arita37/GeFs/GeFs.git@aa32d657013b7cacf62aaad912a9b88110cee5d1  -y ")
-  from gefs import RandomForest
-
+import os, sys,copy, pathlib, pprint, json, pandas as pd, numpy as np, scipy as sci, sklearn
 
 ####################################################################################################
-VERBOSE = True
-
-
-# MODEL_URI = get_model_uri(__file__)
+try   : verbosity = int(json.load(open(os.path.dirname(os.path.abspath(__file__)) + "/../../config.json", mode='r'))['verbosity'])
+except Exception as e : verbosity = 2
+#raise Exception(f"{e}")
 
 def log(*s):
     print(*s, flush=True)
 
+def log2(*s):
+    if verbosity >= 2 : print(*s, flush=True)
+
+def log3(*s):
+    if verbosity >= 3 : print(*s, flush=True)
+
+def os_makedirs(dir_or_file):
+    if os.path.isfile(dir_or_file) :os.makedirs(os.path.dirname(os.path.abspath(dir_or_file)), exist_ok=True)
+    else : os.makedirs(os.path.abspath(dir_or_file), exist_ok=True)
 
 ####################################################################################################
 global model, session
-
-
 def init(*kw, **kwargs):
     global model, session
     model = Model(*kw, **kwargs)
     session = None
 
+def reset():
+    global model, session
+    model, session = None, None
 
+
+#######Custom model #################################################################################
+from sklearn.model_selection import train_test_split
+# from gefs import prep
+# from prep import train_test_split
+
+thisfile_dirpath = os.path.dirname(os.path.abspath(__file__) ).replace("\\", "/")
+try :
+  sys.path.append( thisfile_dirpath + "/repo/model_gefs/" )
+  from gefs import RandomForest
+except :
+  #   os.system( " python -m pip install git+https://github.com/arita37/GeFs/GeFs.git@aa32d657013b7cacf62aaad912a9b88110cee5d1  -y ")
+  # Updated GeFs
+  os.system( "pip install git+git://github.com/arita37/GeFs.git@f5725d7787149eea3886f52437cec77513e30666")
+  sys.path.append( thisfile_dirpath + "/repo/model_gefs/" )
+  from gefs import RandomForest
+
+
+####################################################################################################
 class Model(object):
     def __init__(self, model_pars=None, data_pars=None, compute_pars=None):
         self.model_pars, self.compute_pars, self.data_pars = model_pars, compute_pars, data_pars
@@ -47,8 +69,13 @@ class Model(object):
                 self.model = None  # In order to create an instance of the model we need to calculate the ncat mentioned above on our dataset
                 log('ncat is not define')
             else:
+                """
+                    def __init__(self, n_estimators=100, imp_measure='gini', min_samples_split=2,
+                 min_samples_leaf=1, max_features=None, bootstrap=True,
+                 ncat=None, max_depth=1e6, surrogate=False):
+                """
                 self.model = RandomForest(n_estimators=self.n_estimators, ncat=self.ncat)
-            if VERBOSE: log(None, self.model)
+            log(None, self.model)
 
                 
 def fit(data_pars=None, compute_pars=None, out_pars=None, **kw):
@@ -57,7 +84,7 @@ def fit(data_pars=None, compute_pars=None, out_pars=None, **kw):
     global model, session
     session = None  # Session type for compute
     Xtrain, ytrain, Xtest, ytest = get_dataset(data_pars, task_type="train")
-    if VERBOSE: log(Xtrain.shape, model.model)
+    log(Xtrain.shape, model.model)
 
     if model.ncat is None:
         log("#!IMPORTANT This indicates that the preprocessing pipeline was not adapted to GEFS! and we need to calculate ncat")
@@ -65,12 +92,34 @@ def fit(data_pars=None, compute_pars=None, out_pars=None, **kw):
         temp_train = pd.concat([Xtrain, ytrain], axis=1)
         temp_test  = pd.concat([Xtest, ytest],   axis=1)
         df         = pd.concat([temp_train, temp_test], ignore_index=True, sort=False)
-        model.ncat = pd_colcat_get_catcount(df.values, classcol=-1,
-                                            continuous_ids=[df.columns.get_loc(c) for c in cont_cols])
+        model.ncat = pd_colcat_get_catcount(
+            df, 
+            # categ cols
+            colcat=data_pars["cols_input_type"]["colcat"],
+            # target col index
+            classcol=-1,
+            # num cols indices
+            continuous_ids=[df.columns.get_loc(c) for c in cont_cols]
+        )
+        ncat = np.array(list(model.ncat.values()))
 
-        model.model = RandomForest(model.n_estimators, ncat=model.ncat)
+        # In case of warnings make sure ncat is consistent
+        # check this issue : https://github.com/AlCorreia/GeFs/issues/6
+        """
+         def __init__(self, n_estimators=100, imp_measure='gini', min_samples_split=2,
+         min_samples_leaf=1, max_features=None, bootstrap=True,
+         ncat=None, max_depth=1e6, surrogate=False):
+        """
+        model.model = RandomForest(n_estimators=model.n_estimators, ncat=ncat, )
 
-    model.model.fit(Xtrain, ytrain)
+    # Remove the target col
+    X = Xtrain.iloc[:,:-1]
+    # y should be 1-dim
+    model.model.fit(X.values, ytrain.values.reshape(-1))
+
+    # Make sure ncat is consistent, otherwise model.topc() 
+    # will throw all kind of numba errors
+    # check this issue : https://github.com/AlCorreia/GeFs/issues/5
     model.model = model.model.topc()  # Convert to a GeF
 
 
@@ -81,19 +130,13 @@ def eval(data_pars=None, compute_pars=None, out_pars=None, **kw):
     global model, session
     data_pars['train'] = True
     Xval, yval        = get_dataset(data_pars, task_type="eval")
-    # ypred      = model.model.predict(Xval)
     ypred, ypred_prob = predict(Xval, data_pars, compute_pars, out_pars)
-
-    # log(data_pars)
     mpars = compute_pars.get("metrics_pars", {'metric_name': 'auc'})
 
-    scorer = {
-        "auc": sklearn.metrics.roc_auc_score,
-    }[mpars['metric_name']]
+    scorer = { "auc": sklearn.metrics.roc_auc_score, }[mpars['metric_name']]
 
     mpars2 = mpars.get("metrics_pars", {})  ##Specific to score
     score_val = scorer(yval, ypred_prob, **mpars2)
-
     ddict = [{"metric_val": score_val, 'metric_name': mpars['metric_name']}]
 
     return ddict
@@ -104,24 +147,23 @@ def predict(Xpred=None, data_pars={}, compute_pars={}, out_pars={}, **kw):
     post_process_fun = model.model_pars.get('post_process_fun', None)
     if post_process_fun is None:
         def post_process_fun(y):
-            return y
+            return y.astype(np.int)
 
     if Xpred is None:
         data_pars['train'] = False
         Xpred              = get_dataset(data_pars, task_type="predict")
-
-    ypred, y_prob = model.model.classify(Xpred, classcol = Xpred.shape[1], return_prob=True)
+    
+    # target column index
+    coly_index = Xpred.columns.get_loc(data_pars["cols_input_type"]["coly"][0])
+    # Models expect no target 
+    X = Xpred.iloc[:,:-1].values
+    ypred, y_prob = model.model.classify(X, classcol=coly_index, return_prob=True)
+    
     ypred         = post_process_fun(ypred)
     y_prob        = np.max(y_prob, axis=1)
-    
     ypred_proba = y_prob  if compute_pars.get("probability", False) else None
-
     return ypred, ypred_proba
 
-
-def reset():
-    global model, session
-    model, session = None, None
 
 
 def save(path=None, info=None):
@@ -159,38 +201,7 @@ def load_info(path=""):
             dd[key] = obj
     return dd
 
-
-def preprocess(prepro_pars):
-    if prepro_pars['type'] == 'test':
-        from sklearn.datasets import make_classification
-        from sklearn.model_selection import train_test_split
-
-        X, y = make_classification(n_features=10, n_redundant=0, n_informative=2,
-                                   random_state=1, n_clusters_per_class=1)
-
-        # log(X,y)
-        Xtrain, Xtest, ytrain, ytest = train_test_split(X, y)
-        return Xtrain, ytrain, Xtest, ytest
-
-    if prepro_pars['type'] == 'train':
-        from sklearn.model_selection import train_test_split
-        df = pd.read_csv(prepro_pars['path'])
-        dfX = df[prepro_pars['colX']]
-        dfy = df[prepro_pars['coly']]
-        Xtrain, Xtest, ytrain, ytest = train_test_split(dfX.values, dfy.values,
-                                                        stratify=dfy.values, test_size=0.1)
-        return Xtrain, ytrain, Xtest, ytest
-
-    else:
-        df = pd.read_csv(prepro_pars['path'])
-        dfX = df[prepro_pars['colX']]
-
-        Xtest, ytest = dfX, None
-        return None, None, Xtest, ytest
-
-
 ####################################################################################################
-############ Do not change #########################################################################
 def get_dataset(data_pars=None, task_type="train", **kw):
     """
       "ram"  : 
@@ -218,36 +229,157 @@ def get_dataset(data_pars=None, task_type="train", **kw):
     raise Exception(f' Requires  Xtrain", "Xtest", "ytrain", "ytest" ')
 
 
-def get_params_sklearn(deep=False):
-    return model.model.get_params(deep=deep)
 
-
-def get_params(param_pars={}, **kw):
-    import json
-    # from jsoncomment import JsonComment ; json = JsonComment()
-    pp          = param_pars
-    choice      = pp['choice']
-    config_mode = pp['config_mode']
-    data_path   = pp['data_path']
-
-    if choice == "json":
-        cf = json.load(open(data_path, mode='r'))
-        cf = cf[config_mode]
-        return cf['model_pars'], cf['data_pars'], cf['compute_pars'], cf['out_pars']
-
-    else:
-        raise Exception(f"Not support choice {choice} yet")
-
-        
-        
 ####################################################################################################        
-############ Custom Code ############################################################################
-def is_continuous(v_array):
+############ Test ##################################################################################
+def pd_colcat_get_catcount(df, colcat, classcol, continuous_ids):
+    """  Learns the number of categories in each variable and standardizes the df.
+        ncat: numpy m The number of categories of each variable. One if the variable is continuous.
     """
-        Returns true if df was sampled from a continuous variables, and false
+
+    if continuous_ids is None:
+        continuous_ids = []
+        
+    # get target col name from col idx
+    classcol = df.columns[classcol]
+
+    df   = df.copy()
+    ncat = {col: 1 for  col in df.columns }
+
+    # get num of target classes
+    df[classcol]   = df[classcol].astype(int)
+    ncat[classcol] = df[classcol].nunique()[0]
+
+    # get num of categ for each of the colcat
+    for i, col in enumerate(colcat) :
+        df[col]   = df[col].astype(int)
+        ncat[col] = df[col].nunique()
+
+    return ncat
+
+
+
+def test_dataset_classi_fake(nrows=500):
+    from sklearn import datasets as sklearn_datasets
+    ndim=11
+    coly   = ['y']
+    colnum = ["colnum_" +str(i) for i in range(0, ndim) ]
+    colcat = ['colcat_1']
+    X, y    = sklearn_datasets.make_classification(
+        n_samples=1000,
+        n_features=ndim,
+        # No n_targets param for make_classification
+        # n_targets=1,
+
+        # Fake dataset, classification on 2 classes
+        n_classes=2,
+        # In classification, n_informative should be less than n_features
+        n_informative=ndim - 2
+    )
+    df         = pd.DataFrame(X,  columns= colnum)
+    df[coly]   = y.reshape(-1, 1)
+
+    for ci in colcat :
+      df[colcat] = np.random.randint(2, len(df))
+
+    return df, colnum, colcat, coly
+
+
+
+
+def test():
+    df, colnum, colcat, coly = test_dataset_classi_fake(nrows=500)
+    X = df[colcat + colnum + coly]
+    y = df[coly]
+
+    # Split the df into train/test subsets
+    X_train_full, X_test, y_train_full, y_test = train_test_split(X, y, test_size=0.05, random_state=2021, )#stratify=y) Regression no classes to stratify to
+    X_train, X_valid, y_train, y_valid         = train_test_split(X_train_full, y_train_full, random_state=2021,)# stratify=y_train_full)
+    log("X_train", X_train)
+    n_sample = 100
+
+    def post_process_fun(y):   ### After prediction is done
+        return  y.astype(np.int)
+
+    def pre_process_fun(y):    ### Before the prediction is done
+        return  int(y)
+
+    m = {
+    "model_pars": {
+        "model_pars" : {'cat': 10, 'n_estimators': 5 }
+       ,"post_process_fun" : post_process_fun   ### After prediction  ########################
+       ,"pre_process_pars" : {
+            "y_norm_fun" :  pre_process_fun ,  ### Before training  ##########################
+        }
+        },
+
+      "compute_pars": { "metric_list": ["accuracy_score","average_precision_score"],
+                        # Eval returns a probability
+                        "probability" : True
+                      },
+
+      "data_pars": {
+          "n_sample" : n_sample,
+          "download_pars" : None,
+          ### Raw data:  column input #####################
+          "cols_input_type" : {
+              "colnum" : colnum,
+              "colcat" : colcat,
+              "coly" : coly
+          },
+
+        ###################################################  
+        'train':   {'Xtrain': X_train, 'ytrain': y_train,
+                    'Xtest':  X_valid, 'ytest': y_valid},
+        'eval':    {'X': X_valid, 'y': y_valid},
+        'predict': {'X': X_valid},
+         }
+      }
+
+    ######## Run ###########################################
+    test_helper(m['model_pars'], m['data_pars'], m['compute_pars'])
+
+
+def test_helper(model_pars, data_pars, compute_pars):
+    global model, session
+    root  = "ztmp/"
+    model = Model(model_pars=model_pars, data_pars=data_pars, compute_pars=compute_pars)
+
+    log('\n\nTraining the model..')
+    fit(data_pars=data_pars, compute_pars=compute_pars, out_pars=None)
+
+    log('Predict data..')
+    ypred, ypred_proba = predict(Xpred=None, data_pars=data_pars, compute_pars=compute_pars)
+    log(f'Top 5 y_pred: {np.squeeze(ypred)[:5]}')
+
+    log('Evaluating the model..')
+    log(eval(data_pars=data_pars, compute_pars=compute_pars))
+
+
+    # Open Issue with GeFs, not pickle-able and with no native saving mechanism
+    # https://github.com/AlCorreia/GeFs/issues/7
+    log('Saving model..')
+    print("Can't save, open issue with GeFs : https://github.com/AlCorreia/GeFs/issues/7")
+    # save(path= root + '/model_dir/')
+
+    log('Load model..')
+    # model, session = load_model(path= root + "/model_dir/")
+    # log('Model successfully loaded!\n\n')
+
+    log('Model architecture:')
+    log(model.model)
+
+    log('Predict data..')
+    ypred, ypred_proba = predict(Xpred=None, data_pars=data_pars, compute_pars=compute_pars)
+    log(f'Top 5 y_pred: {np.squeeze(ypred)[:5]}')
+
+
+
+def is_continuous(v_array):
+    """ Returns true if df was sampled from a continuous variables, and false
     """
     observed = v_array[~np.isnan(v_array)]  # not consider missing values for this.
-    rules    = [np.min(observed) < 0,
+    rules    = [np.min(observed) < -1,
                 np.sum((observed) != np.round(observed)) > 0,
                 len(np.unique(observed)) > min(30, len(observed) / 3)]
     if any(rules):
@@ -256,52 +388,10 @@ def is_continuous(v_array):
         return False
 
 
-def pd_colcat_get_catcount(df, classcol=None, continuous_ids=[]):
-    """
-        Learns the number of categories in each variable and standardizes the df.
-        Parameters
-        ----------
-        df: numpy n x m  Numpy array comprising n realisations (instances) of m variables.
-        classcol: int   The column index of the class variables (if any).
-        continuous_ids: list of ints
-            List containing the indices of known continuous variables. Useful for
-            discrete df like age, which is better modeled as continuous.
-        Returns
-        -------
-        ncat: numpy m The number of categories of each variable. One if the variable is continuous.
-    """
-    df   = df.copy()
-    ncat = np.ones(df.shape[1])
-    if not classcol:
-        classcol = df.shape[1] - 1
-    for i in range(df.shape[1]):
-        if i != classcol and (i in continuous_ids or is_continuous(df[:, i])):
-            continue
-        else:
-            df[:, i] = df[:, i].astype(int)
-            ncat[i] = max(df[:, i]) + 1
-    return ncat
-
-                                     
-def test_model():
+def test2():
     # Auxiliary functions
-
     def get_stats(data, ncat=None):
-        """
-            Compute univariate statistics for continuous variables. Parameters
-            ----------
-            data: numpy n x m
-                Numpy array comprising n realisations (instances) of m variables.
-            Returns
-            -------
-            data: numpy n x m
-                The normalized data.
-            maxv, minv: numpy m
-                The maximum and minimum values of each variable. One and zero, resp.
-                if the variable is categorical.
-            mean, std: numpy m
-                The mean and standard deviation of the variable. Zero and one, resp.
-                if the variable is categorical.
+        """     Compute univariate statistics for continuous variables. Parameters
         """
         data = data.copy()
         maxv = np.ones(data.shape[1])
@@ -328,10 +418,9 @@ def test_model():
                     data[:, i] = (data[:, i] - minv[i]) / (maxv[i] - minv[i])
         return data, maxv, minv, mean, std
 
-                                     
+
     def standardize_data(data, mean, std):
-        """
-            Standardizes the data given the mean and standard deviations values of
+        """ Standardizes the data given the mean and standard deviations values of
             each variable.
         """
         data = data.copy()
@@ -342,30 +431,28 @@ def test_model():
                 data[:, v] = np.clip(data[:, v], -6, 6)
         return data
 
-                                     
+
     def train_test(data, ncat, train_ratio=0.7, prep='std'):
-        assert train_ratio >= 0
-        assert train_ratio <= 1
         shuffle    = np.random.choice(range(data.shape[0]), data.shape[0], replace=False)
         data_train = data[shuffle[:int(train_ratio * data.shape[0])], :]
         data_test  = data[shuffle[int(train_ratio * data.shape[0]):], :]
-                                                    
+
         if prep == 'std':
             _, maxv, minv, mean, std = get_stats(data_train, ncat)
             data_train               = standardize_data(data_train, mean, std)
             X_train, y_train         = data_train[:, :-1], data_train[:, -1]
             return X_train, y_train, data_train, data_test, mean, std
 
-                                     
+
     # Load toy dataset
-    df_white   = pd.read_csv('../../data/input/wine-quality/raw/winequality-white.csv', sep=';').values
-    ncat_white = pd_colcat_get_catcount(df_white, classcol=-1)
+    df_white   = pd.read_csv('https://raw.githubusercontent.com/arita37/GeFs/master/data/winequality_white.csv', sep=';').values
+    ncat_white = pd_colcat_get_catcount(df_white, )#classcol=-1)
     ncat_white[-1] = 2
 
     X_train_white, y_train_white, data_train_white, data_test_white, mean_white, std_white = train_test(df_white,
                                                                                                         ncat_white, 0.7)
     y_train_white = np.where(y_train_white <= 6, 0, 1)
-    
+
     model_pars = {
         'n_estimators':100,
         'ncat': ncat_white
@@ -377,21 +464,15 @@ def test_model():
 
     log('gefs model test ok')
 
+
                                      
 if __name__ == "__main__":
     import fire
     fire.Fire()
+    # test()
                                      
 """
 python model_gef.py test_model
-
-
-"""
-                                     
-                                     
-                                     
-                                     
-"""
 
     def learncats(data, classcol=None, continuous_ids=[]):
   

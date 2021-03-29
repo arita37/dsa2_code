@@ -1,9 +1,14 @@
 # pylint: disable=C0321,C0103,E1221,C0301,E1305,E1121,C0302,C0330
 # -*- coding: utf-8 -*-
 """
+### Usage:
+  python titanic_classifier.py  train      --config  config1
+  python titanic_classifier.py  predict    --config  config1
 
-  python titanic_classifier.py  train    > zlog/log_titanic_train.txt 2>&1
-  python titanic_classifier.py  predict  > zlog/log_titanic_predict.txt 2>&1
+python  titanic_classifier.py  data_profile
+python  titanic_classifier.py  preprocess  --nsample 100
+python  titanic_classifier.py  train       --nsample 200
+python  titanic_classifier.py  predict
 
 
 """
@@ -18,27 +23,6 @@ THIS_FILEPATH  =  os.path.abspath(__file__)
 sys.path.append(root_repo)
 from source.util_feature import save,os_get_function_name
 
-#### Libraries for fastapi modeling ####
-from typing import List
-from pydantic import BaseModel
-
-#### Model for Body Request FastAPI #####
-class BodyOne(BaseModel):
-    Age: int
-    Embarked: str
-    Fare: float
-    Name: str
-    Parch: int
-    Sex: str
-    SibSp: int
-    Ticket: int
-    Pclass: int
-
-#### List of Inferences for predict as Batch ####
-class BodyBatch(BaseModel):
-    Batch: List[BodyOne]
-
-
 def global_pars_update(model_dict,  data_name, config_name):
     print("config_name", config_name)
     dir_data  = root_repo + "/data/"  ; print("dir_data", dir_data)
@@ -51,7 +35,7 @@ def global_pars_update(model_dict,  data_name, config_name):
     m["path_data_preprocess"] = dir_data + f"/input/{data_name}/train/"
 
     #### train input path
-    dir_data_url              = "https://github.com/arita37/dsa2_data/tree/main/"  #### Remote Data directory
+    dir_data_url              = "https://github.com/arita37/dsa2_data/tree/master/"  #### Remote Data directory
     m["path_data_train"]      = dir_data_url + f"/input/{data_name}/train/"
     m["path_data_test"]       = dir_data_url + f"/input/{data_name}/test/"
     #m["path_data_val"]       = dir_data + f"/input/{data_name}/test/"
@@ -78,13 +62,11 @@ def global_pars_update(model_dict,  data_name, config_name):
     return model_dict
 
 
-
 ####################################################################################
 ##### Params########################################################################
-config_default   = "titanic_lightgbm"    ### name of function which contains data configuration
+config_default   = "config1"    ### name of function which contains data configuration
 
 
-# data_name    = "titanic"     ### in data/input/
 cols_input_type_1 = {
      "coly"   :   "Survived"
     ,"colid"  :   "PassengerId"
@@ -97,7 +79,7 @@ cols_input_type_1 = {
 
 
 ####################################################################################
-def titanic_lightgbm() :
+def config1() :
     """
        ONE SINGLE DICT Contains all needed informations for
        used for titanic classification task
@@ -148,23 +130,22 @@ def titanic_lightgbm() :
         #### Example of Custom processor
         {"uri":  THIS_FILEPATH + "::pd_col_myfun",   "pars": {}, "cols_family": "colnum",   "cols_out": "col_myfun",  "type": "" },                
 
-
         ],
                }
         },
 
       "compute_pars": { "metric_list": ["accuracy_score","average_precision_score"]
-
-                        ,"mlflow_pars" : {}   ### Not empty --> use mlflow
+                        # ,"mlflow_pars" : {}   ### Not empty --> use mlflow
                       },
 
       "data_pars": { "n_sample" : n_sample,
-
           "download_pars" : None,
 
-
+          ### Raw data:  column input ##############################################################
           "cols_input_type" : cols_input_type_1,
-          ### family of columns for MODEL  #########################################################
+
+
+          ### Model Input :  Merge family of columns   #############################################
           #  "colnum", "colnum_bin", "colnum_onehot", "colnum_binmap",  #### Colnum columns
           #  "colcat", "colcat_bin", "colcat_onehot", "colcat_bin_map",  #### colcat columns
           #  "colcross_single_onehot_select", "colcross_pair_onehot",  "colcross_pair",  #### colcross columns  "coldate", "coltext",
@@ -177,6 +158,13 @@ def titanic_lightgbm() :
                                ### example of custom
                                "col_myfun"
                               ]
+
+      #### Model Input : Separate Category Sparse from Continuous : Aribitrary name is OK (!)
+     ,'cols_model_type': {
+         'continuous'   : [ 'colnum',   ],
+         'sparse'       : [ 'colcat_bin', 'colnum_bin',  ],
+         'my_split_23'  : [ 'colnum_bin',   ],
+      }   
 
           ### Filter data rows   ##################################################################
          ,"filter_pars": { "ymax" : 2 ,"ymin" : -1 }
@@ -207,7 +195,6 @@ def pd_col_myfun(df=None, col=None, pars={}):
 
     prepro   = None
     pars_new = None
-
 
 
     ###################################################################################
@@ -266,9 +253,10 @@ def preprocess(config=None, nsample=None):
 
 ##################################################################################
 ########## Train #################################################################
+# def train(config=None, nsample=None):
 from core_run import train
 """
-def train(config=None, nsample=None):
+
 
     config_name  = config  if config is not None else config_default
     mdict        = globals()[config_name]()
@@ -316,30 +304,37 @@ def predict(config=None, nsample=None):
                               )
 """
 
-from core_run import deploy
+#################################################################################
+####### Deploy ##################################################################
+#### Libraries for fastapi modeling ####
+try :
+  from typing import List
+  from pydantic import BaseModel
 
-"""
-def deploy():
-    import uvicorn
-    uvicorn.run("script_name:fastapi_app", host="127.0.0.1", port=8000, log_level="info")
+  #### Model for Body Request FastAPI #####
+  class BodyOne(BaseModel):
+      Age: int
+      Embarked: str
+      Fare: float
+      Name: str
+      Parch: int
+      Sex: str
+      SibSp: int
+      Ticket: int
+      Pclass: int
 
-"""
+  #### List of Inferences for predict as Batch ####
+  class BodyBatch(BaseModel):
+      Batch: List[BodyOne]
+        
+except : pass
+
 
 
 ###########################################################################################################
 ###########################################################################################################
-"""
-python  titanic_classifier.py  data_profile
-python  titanic_classifier.py  preprocess  --nsample 100
-python  titanic_classifier.py  train       --nsample 200
-python  titanic_classifier.py  predict
-python  titanic_classifier.py  deploy
-
-
-"""
-
 if __name__ == "__main__":
-    d = { "data_profile": data_profile,  "train" : train, "predict" : predict, "config" : config_default ,"deploy":deploy}
+    d = { "data_profile": data_profile,  "train" : train, "predict" : predict, "config" : config_default }
     import fire
     fire.Fire(d)
     

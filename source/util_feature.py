@@ -41,6 +41,49 @@ def os_getcwd():
 
 
 #############################################################################################
+def test_get_classification_data(name=None):
+    from sklearn.datasets import make_classification
+    X, y = make_classification(n_classes=2, class_sep=2,
+         weights=[0.1, 0.9], n_informative=3, n_redundant=1, flip_y=0,
+         n_features=20, n_clusters_per_class=1, n_samples=1000, random_state=10)
+
+    cols = [ f'x_{i}' for i in range(0,X.shape[1]) ]
+    dfX   = pd.DataFrame(X, columns=cols)
+    dfX['colid'] = np.arange(0, len(dfX))
+    dfX = dfX.set_index('colid')
+
+    dfy   = pd.DataFrame(y, columns=['coly'])
+    dfy['colid'] = np.arange(0, len(dfy))
+    dfy = dfy.set_index('colid')
+    return dfX, dfy
+
+
+def params_check(pars, check_list, name=""):
+    """
+      Validate a dict parans
+    :param pars:
+    :param check_list:
+    :param name:
+    :return:
+    """
+    ss = ""
+    for t in check_list :
+        if isinstance(t, tuple) :
+            if t[0] not in pars :
+                  ss = ss + f"--missing {t}\n"
+            else :
+               if isinstance(pars[t[0]], t[1]) :
+                  ss = ss + f"--error_type {t}\n"
+        else :
+            if t not in pars :
+                  ss = ss + f"--missing {t}\n"
+    if ss == "" :
+        return True
+    else :
+        ss = f"{name}\n" + ss
+        raise Exception(ss)
+
+
 def save_features(df, name, path=None):
     """ Save dataframe on disk
     :param df:
@@ -118,10 +161,12 @@ def pd_read_file(path_glob="*.pkl", ignore_index=True,  cols=None,
 
   file_list = glob.glob(path_glob)
   # print("ok", verbose)
-  dfall = pd.DataFrame()
+  dfall  = pd.DataFrame()
   n_file = len(file_list)
+  m_job  = n_file // n_pool  if n_file > 1 else 1
+
   if verbose : log(n_file,  n_file // n_pool )
-  for j in range(n_file // n_pool +1 ) :
+  for j in range(0, m_job ) :
       log("Pool", j, end=",")
       job_list =[]
       for i in range(n_pool):
@@ -168,7 +213,11 @@ def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
     import glob, ntpath
 
     supported_extensions = [ ".txt", ".csv", ".zip", ".gzip", ".pkl", ".parquet" ]
-    # fallback_name        = "features"
+
+
+    if (path_data_x.startswith("spark")):
+        df = fetch_spark_koalas(path_data_x, path_data_y, colid, n_sample)
+        return df
 
     if (path_data_x.startswith("http")):
         download_path        = os.path.join(os.path.curdir, "data/input/download")
@@ -182,19 +231,20 @@ def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
 
     log("###### Load dfX target values ######################################")
     print(flist)
-    #df    = None
-    fstr = ",".join(flist)
+    df = None
     for fi in flist :
         try:
-            df = pd_read_file(fi)
-            if len(df) > 0:
-                break
+            if fi[-4:] in [".zip", ".csv", ".txt", '.gzip'] :  dfi = pd.read_csv(fi)
+            if fi.endswith(".parquet") :  dfi = pd.read_parquet(fi)
+            if fi.endswith(".pkl") :      dfi = pd.read_pickle(fi)
+            # dfi = pd_read_file(fi)
+            df  = pd.concat((df, dfi))  if df is not None else dfi
+
         except:
             pass
 
-    #    df = pd.concat((df, dfi))  if df is not None else dfi
     assert len(df) > 0 , " Dataframe is empty: " + path_data_x
-    log("dfX", df.T.head(4))
+    log("dfX", df.head(4) )
 
     #### Add unique column_id  ###############################################
     if colid not in list(df.columns ):
@@ -213,7 +263,7 @@ def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
         flist = [ f for f in flist if os.path.splitext(f)[1][1:].strip().lower() in [ 'zip', 'parquet'] and ntpath.basename(f)[:6] in ['target']]
         # dfy   = pd.DataFrame()
         fstr = ",".join(flist)
-        dfy  = pd_read_file(fstr)
+        dfy   = pd_read_file(fstr)
 
         log("dfy", dfy.head(4).T)
         if colid not in list(dfy.columns) :
@@ -224,6 +274,14 @@ def load_dataset(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
         log("dfy not loaded", path_data_y, e  )
 
     return df
+
+
+def fetch_spark_koalas(path_data_x, path_data_y='',  colid="jobId", n_sample=-1):
+   import databricks.koalas as ks
+   path_data = path_data_x.replace("spark:", "")
+   df= ks.read_parquet(path_data)
+   return df
+
 
 
 def fetch_dataset(url_dataset, path_target=None, file_target=None):
@@ -253,7 +311,6 @@ def fetch_dataset(url_dataset, path_target=None, file_target=None):
 
     if file_target is None:
         file_target = fallback_name # mktemp(dir="")
-
 
 
     if "github.com" in url_dataset:
@@ -345,7 +402,9 @@ def load_function_uri(uri_name="myfolder/myfile.py::myFunction"):
     pkg = uri_name.split("::")
 
     assert len(pkg) > 1, "  Missing :   in  uri_name module_name:function_or_class "
-    package, name = pkg[0], pkg[1]
+    package_path, class_name = pkg[0], pkg[1]
+
+    package = package_path.replace("/", ".").replace(".py", "")
 
     try:
         #### Import from package mlmodels sub-folder
@@ -354,18 +413,19 @@ def load_function_uri(uri_name="myfolder/myfile.py::myFunction"):
     except Exception as e1:
         try:
             ### Add Folder to Path and Load absoluate path module
-            path_parent = str(Path(package).parent.parent.absolute())
+            path_parent = str(Path(package_path).parent.parent.absolute())
             sys.path.append(path_parent)
             log(path_parent)
 
             #### import Absolute Path model_tf.1_lstm
-            model_name   = Path(package).stem  # remove .py
-            package_name = str(Path(package).parts[-2]) + "." + str(model_name)
+            model_name   = Path(package_path).stem  # remove .py
+            package_name = str(Path(package_path).parts[-2]) + "." + str(model_name)
+            
             #log(package_name, config_name)
-            return  getattr(importlib.import_module(package_name), name)
+            return  getattr(importlib.import_module(package_name), class_name)
 
         except Exception as e2:
-            raise NameError(f"Module {pkg} notfound, {e1}, {e2}")
+            raise NameError(  f"Module {pkg} notfound, {e1}, {e2}, os.cwd: {os.getcwd()}")
 
 
 #############################################################################################
@@ -841,7 +901,14 @@ def pd_colcat_mapping(df, colname):
 
 
 def pd_colcat_toint(dfref, colname, colcat_map=None, suffix=None):
+
+    ### to ensure dataframe
+    colname = [colname] if isinstance(colname, str) else colname
+
     df = dfref[colname]
+    # if colname is single value df will be series type not a dataframe so we convert it to dataframe to be sure it is a dataframe type
+    df = pd.DataFrame(df)
+
     suffix = "" if suffix is None else suffix
     colname_new = []
 
@@ -856,7 +923,11 @@ def pd_colcat_toint(dfref, colname, colcat_map=None, suffix=None):
         return df[colname_new], colcat_map
 
     colcat_map = {}
+    
+    # old: for col in colname:
+    # update: for col in [colname] >> if colname is just single value it will loop through string not the list, so we convert to list before looping
     for col in colname:
+        
         colcat_map[col]           = {}
         df[col + suffix], label   = df[col].factorize()
         colcat_map[col]["decode"] = {i: t for i, t in enumerate(list(label))}
@@ -864,6 +935,7 @@ def pd_colcat_toint(dfref, colname, colcat_map=None, suffix=None):
         colname_new.append(col + suffix)
 
     return df[colname_new], colcat_map
+
 
 
 

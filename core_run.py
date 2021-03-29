@@ -164,13 +164,11 @@ def predict(config='', nsample=None):
     :param nsample:
     :return:
     """
-
     config_uri, config_name = get_config_path(config)
 
     mdict = get_global_pars( config_uri)
     m     = mdict['global_pars']
     log(mdict)
-
 
     from source import run_inference
     run_inference.run_predict(config_name = config_name,
@@ -183,6 +181,53 @@ def predict(config='', nsample=None):
                               model_dict  = None
                               )
 
+####################################################################################
+########## Train Sampler ###########################################################
+def train_sampler(config='', nsample=None):
+    """  train a model with  confi_name  and nsample
+    :param config:
+    :param nsample:
+    :return:
+    """
+    config_uri, config_name = get_config_path(config)
+
+    mdict = get_global_pars(  config_uri)
+    m     = mdict['global_pars']
+    log(mdict)
+    from source import run_sampler
+    run_sampler.run_train(config_name       =  config_name,
+                        config_path       =  m['config_path'],
+                        n_sample          =  nsample if nsample is not None else m['n_sample'],
+                        # use_mlmflow       =  False
+                        )
+
+
+
+########################################################################################
+####### tranform ########################################################################
+def transform(config='', nsample=None):
+    """
+    :param config:
+    :param nsample:
+    :return:
+    """
+    config_uri, config_name = get_config_path(config)
+
+    mdict = get_global_pars( config_uri)
+    m     = mdict['global_pars']
+    log(mdict)
+
+
+    from source import run_sampler
+    run_sampler.run_transform(config_name = config_name,
+                              config_path = m['config_path'],
+                              n_sample    = nsample if nsample is not None else m['n_sample'],
+
+                              #### Optional
+                              path_data   = m['path_pred_data'],
+                              path_output = m['path_pred_output'],
+                              model_dict  = None
+                              )
 
 ########################################################################################
 ####### Inference ######################################################################
@@ -234,9 +279,9 @@ def hyperparam_wrapper(config_full="",
     log(best_dict)
     log(path_output)
 
+
 ########################################################################################
-####### Inference / Deploy ######################################################################
-import uvicorn
+####### Inference / Deploy #############################################################
 def deploy():
     """
     Simple deploy using uvicorn on runtime. U can use gunicorn instead.
@@ -245,6 +290,7 @@ def deploy():
 
     return: Service
     """
+    import uvicorn
     uvicorn.run("core_deploy:app", host="127.0.0.1", port=8000, log_level="info")
 
 

@@ -35,16 +35,45 @@ along with lots of core components layers which can be used to easily build cust
 
 
 """
+import os, sys,copy, pathlib, pprint, json, pandas as pd, numpy as np, scipy as sci, sklearn
+
+####################################################################################################
+try   : verbosity = int(json.load(open(os.path.dirname(os.path.abspath(__file__)) + "/../../config.json", mode='r'))['verbosity'])
+except Exception as e : verbosity = 2
+#raise Exception(f"{e}")
+
+def log(*s):
+    print(*s, flush=True)
+
+def log2(*s):
+    if verbosity >= 2 : print(*s, flush=True)
+
+def log3(*s):
+    if verbosity >= 3 : print(*s, flush=True)
+
+def os_makedirs(dir_or_file):
+    if os.path.isfile(dir_or_file) :os.makedirs(os.path.dirname(os.path.abspath(dir_or_file)), exist_ok=True)
+    else : os.makedirs(os.path.abspath(dir_or_file), exist_ok=True)
+
+####################################################################################################
+global model, session
+def init(*kw, **kwargs):
+    global model, session
+    model = Model(*kw, **kwargs)
+    session = None
+
+def reset():
+    global model, session
+    model, session = None, None
+
+
+########Custom Model ################################################################################
 import warnings
 warnings.filterwarnings("ignore")
 
 from jsoncomment import JsonComment ; json = JsonComment()
-import os
 from pathlib import Path
 import importlib
-
-import numpy as np
-import pandas as pd
 import keras
 from keras.preprocessing.sequence import pad_sequences
 from keras.callbacks import EarlyStopping, ModelCheckpoint
@@ -69,8 +98,6 @@ if tf.__version__ >= '2.0.0':
 #from mlmodels.preprocess.tabular_keras  import get_test_data, get_xy_fd_dien, get_xy_fd_din, get_xy_fd_dsin
 
 
-def log(*s):
-    print(s, flush=True)
 
 ####################################################################################################
 DATA_PARAMS = {
@@ -167,8 +194,7 @@ def fit(data_pars=None, compute_pars=None, out_pars=None, **kw):
     global model, session
     session = None  # Session type for compute
     #Xtrain, ytrain, Xval, yval = get_dataset(data_pars, task_type="train")
-
-
+    
     Xtrain, ytrain, Xval, yval, col_dict = get_dataset(data_pars, task_type="train")
 
 
@@ -191,7 +217,6 @@ def eval(data_pars=None, compute_pars=None, out_pars=None, **kw):
     Xtest, ytest = get_dataset(data_pars, task_type="eval")
     results      = model.model.evaluate(Xtest, ytest)
     ddict        = [{"metric_val": results, 'metric_name': model.model.metrics_names}]
-
     return ddict
 
 
@@ -205,11 +230,6 @@ def predict(Xpred=None, data_pars={}, compute_pars={}, out_pars={}, **kw):
     if compute_pars.get("probability", False):
          ypred_proba = model.model.predict_proba(Xpred)
     return ypred, ypred_proba
-
-
-def reset():
-    global model, session
-    model, session = None, None
 
 
 def save(path=None, save_weight=False):
@@ -348,26 +368,6 @@ def get_dataset(data_pars=None, task_type="train", **kw):
 
     raise Exception(f' Requires  Xtrain", "Xtest", "ytrain", "ytest" ')
 
-
-def get_params_sklearn(deep=False):
-    return model.model.get_params(deep=deep)
-
-
-def get_params(param_pars={}, **kw):
-    import json
-    # from jsoncomment import JsonComment ; json = JsonComment()
-    pp = param_pars
-    choice = pp['choice']
-    config_mode = pp['config_mode']
-    data_path = pp['data_path']
-
-    if choice == "json":
-        cf = json.load(open(data_path, mode='r'))
-        cf = cf[config_mode]
-        return cf['model_pars'], cf['data_pars'], cf['compute_pars'], cf['out_pars']
-
-    else:
-        raise Exception(f"Not support choice {choice} yet")
 
 ########################################################################################################################
 
